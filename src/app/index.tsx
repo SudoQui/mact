@@ -1,98 +1,147 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+// app/index.tsx
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
+import { getPlacesByMode, type Place } from '../services/placesService';
+
+export default function SupabaseConnectionTestScreen() {
+  const [foodPlaces, setFoodPlaces] = useState<Place[]>([]);
+  const [prayerPlaces, setPrayerPlaces] = useState<Place[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  async function loadData() {
+    try {
+      setLoading(true);
+      setErrorMessage(null);
+
+      const [foodData, prayerData] = await Promise.all([
+        getPlacesByMode('food'),
+        getPlacesByMode('prayer'),
+      ]);
+
+      setFoodPlaces(foodData);
+      setPrayerPlaces(prayerData);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Something went wrong loading Supabase data.';
+
+      setErrorMessage(message);
+    } finally {
+      setLoading(false);
+    }
   }
-  if (Device.isDevice) {
+
+  if (loading) {
     return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
+      <SafeAreaView style={styles.container}>
+        <ActivityIndicator size="large" />
+        <Text style={styles.loadingText}>Loading MACT data from Supabase...</Text>
+      </SafeAreaView>
     );
   }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
+
   return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
-  );
-}
+    <SafeAreaView style={styles.container}>
+      <ScrollView contentContainerStyle={styles.content}>
+        <Text style={styles.title}>MACT Supabase Test</Text>
 
-export default function HomeScreen() {
-  return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
-        </ThemedView>
+        {errorMessage ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorTitle}>Connection failed</Text>
+            <Text style={styles.errorText}>{errorMessage}</Text>
+          </View>
+        ) : (
+          <>
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Food places loaded</Text>
+              <Text style={styles.count}>{foodPlaces.length}</Text>
 
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
+              {foodPlaces.map((place) => (
+                <Text key={place.id} style={styles.item}>
+                  {place.name} | {place.suburb ?? 'No suburb'}
+                </Text>
+              ))}
+            </View>
 
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Prayer places loaded</Text>
+              <Text style={styles.count}>{prayerPlaces.length}</Text>
 
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
-    </ThemedView>
+              {prayerPlaces.map((place) => (
+                <Text key={place.id} style={styles.item}>
+                  {place.name} | {place.suburb ?? 'No suburb'}
+                </Text>
+              ))}
+            </View>
+          </>
+        )}
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'center',
-    flexDirection: 'row',
+    backgroundColor: '#f7f7f7',
   },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
-  },
-  heroSection: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
+  content: {
+    padding: 20,
+    gap: 16,
   },
   title: {
+    fontSize: 26,
+    fontWeight: '700',
+  },
+  loadingText: {
+    marginTop: 16,
     textAlign: 'center',
+    fontSize: 16,
   },
-  code: {
-    textTransform: 'uppercase',
+  card: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 18,
+    gap: 8,
   },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  count: {
+    fontSize: 36,
+    fontWeight: '800',
+  },
+  item: {
+    fontSize: 15,
+    paddingVertical: 4,
+  },
+  errorBox: {
+    backgroundColor: '#fff0f0',
+    borderRadius: 16,
+    padding: 18,
+    gap: 8,
+  },
+  errorTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  errorText: {
+    fontSize: 15,
   },
 });

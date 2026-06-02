@@ -1,147 +1,80 @@
-// app/index.tsx
+import { useMemo, useState } from 'react';
+import { Platform, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { FloatingActionButtons } from '@/components/home/FloatingActionButtons';
+import { HomeSearchBar } from '@/components/home/HomeSearchBar';
+import { ModeBar } from '@/components/home/ModeBar';
+import { PlaceholderMap } from '@/components/home/PlaceholderMap';
+import { getModeConfig, type MactMode } from '@/components/home/mactModes';
+import { BottomTabInset } from '@/constants/theme';
 
-import { getPlacesByMode, type Place } from '../services/placesService';
+export default function HomeScreen() {
+  const [selectedMode, setSelectedMode] = useState<MactMode>('food');
+  const [searchQuery, setSearchQuery] = useState('');
+  const insets = useSafeAreaInsets();
+  const mode = useMemo(() => getModeConfig(selectedMode), [selectedMode]);
 
-export default function SupabaseConnectionTestScreen() {
-  const [foodPlaces, setFoodPlaces] = useState<Place[]>([]);
-  const [prayerPlaces, setPrayerPlaces] = useState<Place[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  async function loadData() {
-    try {
-      setLoading(true);
-      setErrorMessage(null);
-
-      const [foodData, prayerData] = await Promise.all([
-        getPlacesByMode('food'),
-        getPlacesByMode('prayer'),
-      ]);
-
-      setFoodPlaces(foodData);
-      setPrayerPlaces(prayerData);
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'Something went wrong loading Supabase data.';
-
-      setErrorMessage(message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <ActivityIndicator size="large" />
-        <Text style={styles.loadingText}>Loading MACT data from Supabase...</Text>
-      </SafeAreaView>
-    );
-  }
+  const bottomPadding =
+    Platform.OS === 'web' ? insets.bottom + 24 : insets.bottom + BottomTabInset + 16;
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>MACT Supabase Test</Text>
+    <SafeAreaView style={[styles.screen, { backgroundColor: `${mode.color}12` }]}>
+      <View
+        style={[
+          styles.content,
+          {
+            paddingTop: Math.max(insets.top, 16),
+            paddingBottom: bottomPadding,
+            paddingLeft: Math.max(insets.left, 18),
+            paddingRight: Math.max(insets.right, 18),
+          },
+        ]}>
+        <View style={styles.header}>
+          <Text style={[styles.eyebrow, { color: mode.color }]}>MACT</Text>
+          <Text style={styles.title}>{mode.title}</Text>
+          <HomeSearchBar
+            accentColor={mode.color}
+            onChangeText={setSearchQuery}
+            value={searchQuery}
+          />
+        </View>
 
-        {errorMessage ? (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorTitle}>Connection failed</Text>
-            <Text style={styles.errorText}>{errorMessage}</Text>
-          </View>
-        ) : (
-          <>
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Food places loaded</Text>
-              <Text style={styles.count}>{foodPlaces.length}</Text>
+        <View style={styles.mapShell}>
+          <PlaceholderMap accentColor={mode.color} />
+          <FloatingActionButtons accentColor={mode.color} />
+        </View>
 
-              {foodPlaces.map((place) => (
-                <Text key={place.id} style={styles.item}>
-                  {place.name} | {place.suburb ?? 'No suburb'}
-                </Text>
-              ))}
-            </View>
-
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Prayer places loaded</Text>
-              <Text style={styles.count}>{prayerPlaces.length}</Text>
-
-              {prayerPlaces.map((place) => (
-                <Text key={place.id} style={styles.item}>
-                  {place.name} | {place.suburb ?? 'No suburb'}
-                </Text>
-              ))}
-            </View>
-          </>
-        )}
-      </ScrollView>
+        <ModeBar onSelectMode={setSelectedMode} selectedMode={selectedMode} />
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  screen: {
     flex: 1,
-    backgroundColor: '#f7f7f7',
   },
   content: {
-    padding: 20,
+    flex: 1,
     gap: 16,
   },
+  header: {
+    gap: 10,
+  },
+  eyebrow: {
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
   title: {
-    fontSize: 26,
-    fontWeight: '700',
+    color: '#151922',
+    fontSize: 30,
+    fontWeight: '900',
+    lineHeight: 36,
   },
-  loadingText: {
-    marginTop: 16,
-    textAlign: 'center',
-    fontSize: 16,
-  },
-  card: {
-    backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 18,
-    gap: 8,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  count: {
-    fontSize: 36,
-    fontWeight: '800',
-  },
-  item: {
-    fontSize: 15,
-    paddingVertical: 4,
-  },
-  errorBox: {
-    backgroundColor: '#fff0f0',
-    borderRadius: 16,
-    padding: 18,
-    gap: 8,
-  },
-  errorTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  errorText: {
-    fontSize: 15,
+  mapShell: {
+    flex: 1,
+    position: 'relative',
   },
 });

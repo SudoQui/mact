@@ -4,25 +4,57 @@ const ACTIONS = ['Near Me', 'Filter', 'Saved'] as const;
 
 type FloatingActionButtonsProps = {
   accentColor: string;
+  isNearMeLoading?: boolean;
+  onPressNearMe: () => void;
+  onPressSaved: () => void;
 };
 
-export function FloatingActionButtons({ accentColor }: FloatingActionButtonsProps) {
+export function FloatingActionButtons({
+  accentColor,
+  isNearMeLoading = false,
+  onPressNearMe,
+  onPressSaved,
+}: FloatingActionButtonsProps) {
   return (
     <View style={styles.container} pointerEvents="box-none">
       {ACTIONS.map((label) => (
         <Pressable
           key={label}
           accessibilityRole="button"
+          disabled={label === 'Near Me' && isNearMeLoading}
+          onPress={getActionPressHandler(label, onPressNearMe, onPressSaved)}
           style={({ pressed }) => [
             styles.button,
             { borderColor: accentColor },
-            pressed && styles.pressed,
+            (pressed || (label === 'Near Me' && isNearMeLoading)) && styles.pressed,
           ]}>
-          <Text style={[styles.label, { color: accentColor }]}>{label}</Text>
+          <Text style={[styles.label, { color: accentColor }]}>
+            {label === 'Near Me' && isNearMeLoading ? 'Locating...' : label}
+          </Text>
         </Pressable>
       ))}
     </View>
   );
+}
+
+function getActionPressHandler(
+  label: (typeof ACTIONS)[number],
+  onPressNearMe: () => void,
+  onPressSaved: () => void
+) {
+  if (label === 'Near Me') {
+    return onPressNearMe;
+  }
+
+  if (label === 'Saved') {
+    return onPressSaved;
+  }
+
+  return noop;
+}
+
+function noop() {
+  return undefined;
 }
 
 const styles = StyleSheet.create({

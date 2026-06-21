@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 
 import type { HomeResult } from '@/components/home/MapResults';
-import { PlaceholderMap } from '@/components/home/PlaceholderMap';
+import { MockFoodMap } from '@/components/home/MockFoodMap';
 import { RealFoodMap } from '@/components/home/RealFoodMap';
 import type { Place } from '@/services/placesService';
 
@@ -45,13 +45,16 @@ export function FoodMap({
   }
 
   return (
-    <PlaceholderMap
+    <MockFoodMap
       accentColor={accentColor}
-      results={places}
-      onPressPlace={onSelectPlace}
-      onMapDrag={onMapInteraction}
-      onResetView={onMapInteraction}>
+      places={places}
+      selectedPlace={selectedPlace}
+      onSelectPlace={onSelectPlace}
+      userLocation={userLocation}
+      nearMeActive={nearMeActive}
+      onMapInteraction={onMapInteraction}
+    >
       {children}
-    </PlaceholderMap>
+    </MockFoodMap>
   );
 }

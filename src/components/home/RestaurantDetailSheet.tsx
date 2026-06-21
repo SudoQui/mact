@@ -8,8 +8,8 @@ import {
   View,
 } from 'react-native';
 
-import { isPlaceSaved, toggleSavedPlace } from '@/lib/favourites';
 import { formatDistance } from '@/lib/distance';
+import { isPlaceSaved, toggleSavedPlace } from '@/lib/favourites';
 import { getFoodDetails, type FoodDetails, type Place } from '@/services/placesService';
 
 type RestaurantDetailSheetProps = {

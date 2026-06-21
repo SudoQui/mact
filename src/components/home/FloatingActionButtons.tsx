@@ -4,35 +4,63 @@ const ACTIONS = ['Near Me', 'Filter', 'Saved'] as const;
 
 type FloatingActionButtonsProps = {
   accentColor: string;
+  isNearMeActive?: boolean;
   isNearMeLoading?: boolean;
+  onClearNearMe?: () => void;
   onPressNearMe: () => void;
   onPressSaved: () => void;
 };
 
 export function FloatingActionButtons({
   accentColor,
+  isNearMeActive = false,
   isNearMeLoading = false,
+  onClearNearMe,
   onPressNearMe,
   onPressSaved,
 }: FloatingActionButtonsProps) {
   return (
     <View style={styles.container} pointerEvents="box-none">
-      {ACTIONS.map((label) => (
-        <Pressable
-          key={label}
-          accessibilityRole="button"
-          disabled={label === 'Near Me' && isNearMeLoading}
-          onPress={getActionPressHandler(label, onPressNearMe, onPressSaved)}
-          style={({ pressed }) => [
-            styles.button,
-            { borderColor: accentColor },
-            (pressed || (label === 'Near Me' && isNearMeLoading)) && styles.pressed,
-          ]}>
-          <Text style={[styles.label, { color: accentColor }]}>
-            {label === 'Near Me' && isNearMeLoading ? 'Locating...' : label}
-          </Text>
-        </Pressable>
-      ))}
+      {ACTIONS.map((label) => {
+        if (label === 'Near Me' && isNearMeActive) {
+          return (
+            <Pressable
+              key="clear-near-me"
+              accessibilityRole="button"
+              onPress={onClearNearMe}
+              style={({ pressed }) => [
+                styles.button,
+                { backgroundColor: accentColor, borderColor: accentColor },
+                pressed && styles.pressed,
+              ]}>
+              <Text style={[styles.label, styles.activeLabel]}>Clear Near Me</Text>
+            </Pressable>
+          );
+        }
+
+        return (
+          <Pressable
+            key={label}
+            accessibilityRole="button"
+            disabled={label === 'Near Me' && isNearMeLoading}
+            onPress={getActionPressHandler(label, onPressNearMe, onPressSaved)}
+            style={({ pressed }) => [
+              styles.button,
+              { borderColor: accentColor },
+              label === 'Near Me' && isNearMeActive && { backgroundColor: accentColor },
+              (pressed || (label === 'Near Me' && isNearMeLoading)) && styles.pressed,
+            ]}>
+            <Text
+              style={[
+                styles.label,
+                label === 'Near Me' && isNearMeActive && styles.activeLabel,
+                { color: label === 'Near Me' && isNearMeActive ? '#FFFFFF' : accentColor },
+              ]}>
+              {label === 'Near Me' && isNearMeLoading ? 'Locating...' : label}
+            </Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -82,6 +110,9 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: '800',
+  },
+  activeLabel: {
+    color: '#FFFFFF',
   },
   pressed: {
     opacity: 0.72,

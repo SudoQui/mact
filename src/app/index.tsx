@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as Location from 'expo-location';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Platform, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingActionButtons } from '@/components/home/FloatingActionButtons';
+import { FoodMap } from '@/components/home/FoodMap';
 import { HomeSearchBar } from '@/components/home/HomeSearchBar';
 import { MapResults, type HomeResult } from '@/components/home/MapResults';
 import { ModeBar } from '@/components/home/ModeBar';
-import { PlaceholderMap } from '@/components/home/PlaceholderMap';
 import { RestaurantDetailSheet } from '@/components/home/RestaurantDetailSheet';
 import { SavedRestaurantsSheet } from '@/components/home/SavedRestaurantsSheet';
 import { UnderConstructionCard } from '@/components/home/UnderConstructionCard';
@@ -24,8 +24,10 @@ export default function HomeScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [nearMeMessage, setNearMeMessage] = useState<string | null>(null);
+  const [isNearMeActive, setIsNearMeActive] = useState(false);
   const [isNearMeLoading, setIsNearMeLoading] = useState(false);
   const [selectedFoodPlace, setSelectedFoodPlace] = useState<Place | null>(null);
+  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [isSavedSheetOpen, setIsSavedSheetOpen] = useState(false);
   const insets = useSafeAreaInsets();
   const mode = useMemo(() => getModeConfig(selectedMode), [selectedMode]);
@@ -36,13 +38,27 @@ export default function HomeScreen() {
       setIsLoading(true);
       setErrorMessage(null);
       setNearMeMessage(null);
+      setIsNearMeActive(false);
 
       if (selectedMode !== 'food') {
         setResults([]);
         return;
       }
 
-      const places = await getPlacesByMode('food');
+      // 8 second timeout for loading
+      let timeoutId: ReturnType<typeof setTimeout> | null = null;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error('Loading took too long. Please check your connection and try again.'));
+        }, 8000);
+      });
+
+      const places = await Promise.race([
+        getPlacesByMode('food'),
+        timeoutPromise,
+      ]);
+
+      if (timeoutId) clearTimeout(timeoutId);
       setResults(places.map((item) => ({ kind: 'place', item })));
     } catch (error) {
       const message =
@@ -60,14 +76,28 @@ export default function HomeScreen() {
   }, [loadResults]);
 
   const restoreNormalFoodResults = useCallback(async () => {
-    const places = await getPlacesByMode('food');
-    setResults(places.map((item) => ({ kind: 'place', item })));
+    try {
+      const places = await getPlacesByMode('food');
+      setResults(places.map((item) => ({ kind: 'place', item })));
+      setErrorMessage(null);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Something went wrong loading MACT results.';
+      setErrorMessage(message);
+    }
   }, []);
+
+  const handleClearNearMe = useCallback(async () => {
+    await restoreNormalFoodResults();
+    setNearMeMessage(null);
+    setIsNearMeActive(false);
+  }, [restoreNormalFoodResults]);
 
   const handleSelectMode = useCallback((nextMode: MactMode) => {
     setSelectedMode(nextMode);
     setSelectedFoodPlace(null);
     setNearMeMessage(null);
+    setIsNearMeActive(false);
   }, []);
 
   const handlePressFoodPlace = useCallback((place: Place) => {
@@ -90,6 +120,12 @@ export default function HomeScreen() {
   const handleCloseRestaurantDetail = useCallback(() => {
     setSelectedFoodPlace(null);
   }, []);
+
+  const handleMapInteraction = useCallback(() => {
+    if (isNearMeActive) {
+      void handleClearNearMe();
+    }
+  }, [handleClearNearMe, isNearMeActive]);
 
   const handlePressNearMe = useCallback(async () => {
     if (selectedMode !== 'food') {
@@ -120,6 +156,10 @@ export default function HomeScreen() {
         'food',
         NEARBY_RADIUS_METERS
       );
+      setUserLocation({
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+      });
       const sortedNearbyPlaces = [...nearbyPlaces].sort(
         (left, right) => (left.distance_meters ?? 0) - (right.distance_meters ?? 0)
       );
@@ -203,7 +243,22 @@ export default function HomeScreen() {
         </View>
 
         <View style={styles.mapShell}>
-          <PlaceholderMap accentColor={mode.color}>
+          <FoodMap
+            accentColor={mode.color}
+            places={filteredResults}
+            selectedPlace={selectedFoodPlace}
+            userLocation={userLocation}
+            nearMeActive={isNearMeActive}
+            onSelectPlace={(placeId) => {
+              const found = filteredResults.find(
+                (r) => r.kind === 'place' && r.item.id === placeId
+              );
+
+              if (found && found.kind === 'place') {
+                handlePressFoodPlace(found.item);
+              }
+            }}
+            onMapInteraction={handleMapInteraction}>
             {nearMeMessage ? (
               <View style={[styles.notice, { borderColor: mode.color }]}>
                 <Text style={[styles.noticeText, { color: mode.color }]}>{nearMeMessage}</Text>
@@ -228,10 +283,12 @@ export default function HomeScreen() {
                 results={filteredResults}
               />
             )}
-          </PlaceholderMap>
+          </FoodMap>
           <FloatingActionButtons
             accentColor={mode.color}
+            isNearMeActive={isNearMeActive}
             isNearMeLoading={isNearMeLoading}
+            onClearNearMe={handleClearNearMe}
             onPressNearMe={handlePressNearMe}
             onPressSaved={handleOpenSavedRestaurants}
           />

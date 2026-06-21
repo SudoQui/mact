@@ -9,16 +9,16 @@ export type ModeConfig = {
 
 export const MACT_MODES: ModeConfig[] = [
   {
-    id: 'food',
-    label: 'Food',
-    title: 'Halal food nearby',
-    color: '#D14F2A',
-  },
-  {
     id: 'prayer',
     label: 'Prayer',
     title: 'Prayer spaces nearby',
     color: '#1C7C66',
+  },
+  {
+    id: 'food',
+    label: 'Food',
+    title: 'Halal food nearby',
+    color: '#D14F2A',
   },
   {
     id: 'community',

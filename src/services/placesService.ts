@@ -26,10 +26,8 @@ export type FoodDetails = {
   halal_certified: boolean;
   halal_certificate_expiry: string | null;
   hand_slaughtered: 'yes' | 'no' | 'unknown';
-  no_pork: boolean;
-  no_alcohol: boolean;
-  sells_pork: boolean;
-  sells_alcohol: boolean;
+  pork_status: 'none_served' | 'served' | 'unknown' | null;
+  alcohol_status: 'none_served' | 'served' | 'unknown' | null;
   cross_contamination_risk: 'low' | 'medium' | 'high' | 'unknown';
   verification_source:
     | 'admin'

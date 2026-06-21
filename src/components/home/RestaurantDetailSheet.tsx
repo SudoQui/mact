@@ -227,7 +227,7 @@ export function RestaurantDetailSheet({
 }
 
 function buildChecklist(details: FoodDetails): ChecklistItem[] {
-  return [
+  const items: ChecklistItem[] = [
     {
       label: 'Meat provider confirmed halal',
       value: formatBoolean(details.meat_provider_confirmed_halal),
@@ -244,14 +244,15 @@ function buildChecklist(details: FoodDetails): ChecklistItem[] {
       label: 'Hand slaughtered',
       value: formatText(details.hand_slaughtered),
     },
-    {
-      label: 'No pork',
-      value: formatBoolean(details.no_pork),
-    },
-    {
-      label: 'No alcohol',
-      value: formatBoolean(details.no_alcohol),
-    },
+  ];
+
+  // Pork status mapping
+  items.push(formatPorkChecklist(details));
+
+  // Alcohol status mapping
+  items.push(formatAlcoholChecklist(details));
+
+  items.push(
     {
       label: 'Details last updated',
       value: formatDate(details.details_last_updated),
@@ -263,8 +264,38 @@ function buildChecklist(details: FoodDetails): ChecklistItem[] {
     {
       label: 'Confidence level',
       value: formatText(details.confidence_level),
-    },
-  ];
+    }
+  );
+
+  return items;
+}
+
+function formatAlcoholChecklist(details: FoodDetails): ChecklistItem {
+  const status = details.alcohol_status ?? 'unknown';
+
+  if (status === 'none_served') {
+    return { label: 'No alcohol', value: 'Confirmed' };
+  }
+
+  if (status === 'served') {
+    return { label: 'Sells alcohol', value: 'Yes' };
+  }
+
+  return { label: 'Alcohol status', value: 'Needs verification' };
+}
+
+function formatPorkChecklist(details: FoodDetails): ChecklistItem {
+  const status = details.pork_status ?? 'unknown';
+
+  if (status === 'none_served') {
+    return { label: 'No pork', value: 'Confirmed' };
+  }
+
+  if (status === 'served') {
+    return { label: 'Serves pork', value: 'Yes' };
+  }
+
+  return { label: 'Pork status', value: 'Needs verification' };
 }
 
 function formatBoolean(value: boolean) {

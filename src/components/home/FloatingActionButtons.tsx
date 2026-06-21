@@ -88,9 +88,11 @@ function noop() {
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    right: 18,
-    top: 148,
+    right: 12,
+    top: 12,
     gap: 10,
+    alignItems: 'flex-end',
+    zIndex: 50,
   },
   button: {
     minHeight: 44,

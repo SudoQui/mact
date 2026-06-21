@@ -333,10 +333,11 @@ const styles = StyleSheet.create({
   },
   controlBar: {
     position: 'absolute',
-    right: 12,
+    left: 12,
     top: 12,
-    gap: 8,
-    alignItems: 'flex-end',
+    gap: 10,
+    alignItems: 'flex-start',
+    zIndex: 50,
   },
   controlButton: {
     width: 40,

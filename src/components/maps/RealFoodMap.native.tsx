@@ -86,7 +86,8 @@ export function RealFoodMap({
           styleURL={DEMO_STYLE_URL}
           onRegionDidChange={handleRegionDidChange}
           logoEnabled={false}
-          compassEnabled={true}>
+          compassEnabled={true}
+        >
           <MapLibreGL.Camera
             ref={cameraRef}
             centerCoordinate={initialCenter}
@@ -100,7 +101,8 @@ export function RealFoodMap({
               key={place.id}
               id={place.id}
               coordinate={[place.longitude, place.latitude]}
-              onSelected={() => onSelectPlace(place.id)}>
+              onSelected={() => onSelectPlace(place.id)}
+            >
               <View
                 style={[
                   styles.marker,
@@ -115,7 +117,8 @@ export function RealFoodMap({
           <Pressable
             accessibilityRole="button"
             onPress={fitRestaurants}
-            style={({ pressed }) => [styles.controlButton, pressed && styles.controlPressed]}>
+            style={({ pressed }) => [styles.controlButton, pressed && styles.controlPressed]}
+          >
             <Text style={styles.controlLabel}>Fit Restaurants</Text>
           </Pressable>
         </View>

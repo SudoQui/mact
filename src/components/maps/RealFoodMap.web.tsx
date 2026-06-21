@@ -2,10 +2,9 @@ import type { ReactNode } from 'react';
 
 import type { HomeResult } from '@/components/home/MapResults';
 import { MockFoodMap } from '@/components/home/MockFoodMap';
-import { RealFoodMap } from '@/components/maps/RealFoodMap';
 import type { Place } from '@/services/placesService';
 
-type FoodMapProps = {
+type RealFoodMapProps = {
   accentColor: string;
   places: HomeResult[];
   selectedPlace: Place | null;
@@ -16,9 +15,7 @@ type FoodMapProps = {
   children?: ReactNode;
 };
 
-const USE_REAL_FOOD_MAP = true;
-
-export function FoodMap({
+export function RealFoodMap({
   accentColor,
   places,
   selectedPlace,
@@ -27,23 +24,7 @@ export function FoodMap({
   nearMeActive,
   onMapInteraction,
   children,
-}: FoodMapProps) {
-  if (USE_REAL_FOOD_MAP) {
-    return (
-      <RealFoodMap
-        accentColor={accentColor}
-        places={places}
-        selectedPlace={selectedPlace}
-        onSelectPlace={onSelectPlace}
-        userLocation={userLocation}
-        nearMeActive={nearMeActive}
-        onMapInteraction={onMapInteraction}
-      >
-        {children}
-      </RealFoodMap>
-    );
-  }
-
+}: RealFoodMapProps) {
   return (
     <MockFoodMap
       accentColor={accentColor}

@@ -1,6 +1,6 @@
-import MapLibreGL from '@maplibre/maplibre-react-native';
+import { Map } from '@maplibre/maplibre-react-native';
 import type { ReactNode } from 'react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { HomeResult } from '@/components/home/MapResults';
@@ -33,85 +33,23 @@ export function RealFoodMap({
   onMapInteraction,
   children,
 }: RealFoodMapProps) {
-  const cameraRef = useRef<any>(null);
-  const [initialCenter, setInitialCenter] = useState<[number, number]>(CANBERRA_CENTER);
-  const [zoomLevel, setZoomLevel] = useState(DEFAULT_ZOOM);
-
-  const placeLocations = useMemo(
-    () =>
-      places
-        .filter((item): item is Extract<HomeResult, { kind: 'place' }> => item.kind === 'place')
-        .filter((place) => typeof place.item.latitude === 'number' && typeof place.item.longitude === 'number')
-        .map((place) => ({
-          id: place.item.id,
-          latitude: place.item.latitude,
-          longitude: place.item.longitude,
-        })),
-    [places]
-  );
-
-  useEffect(() => {
-    if (nearMeActive && userLocation) {
-      setInitialCenter([userLocation.longitude, userLocation.latitude]);
-      setZoomLevel(USER_ZOOM);
-      return;
-    }
-
-    setInitialCenter(CANBERRA_CENTER);
-    setZoomLevel(DEFAULT_ZOOM);
-  }, [nearMeActive, userLocation]);
-
   const fitRestaurants = useCallback(() => {
-    if (!cameraRef.current || placeLocations.length === 0) {
-      return;
-    }
+    // No-op for now while debugging MapLibre exports
+    return;
+  }, []);
 
-    const longitudes = placeLocations.map((point) => point.longitude);
-    const latitudes = placeLocations.map((point) => point.latitude);
-    const ne: [number, number] = [Math.max(...longitudes), Math.max(...latitudes)];
-    const sw: [number, number] = [Math.min(...longitudes), Math.min(...latitudes)];
-
-    cameraRef.current?.fitBounds(ne, sw, FIT_PADDING, 1000);
-  }, [placeLocations]);
-
-  const handleRegionDidChange = useCallback(() => {
+  const handleRegionDidChange = useCallback((_event?: any) => {
     onMapInteraction?.();
   }, [onMapInteraction]);
 
   return (
     <View style={styles.container}>
       <View style={styles.mapWrapper}>
-        <MapLibreGL.MapView
+        <Map
           style={styles.map}
-          styleURL={DEMO_STYLE_URL}
+          mapStyle={DEMO_STYLE_URL}
           onRegionDidChange={handleRegionDidChange}
-          logoEnabled={false}
-          compassEnabled={true}
-        >
-          <MapLibreGL.Camera
-            ref={cameraRef}
-            centerCoordinate={initialCenter}
-            zoomLevel={zoomLevel}
-            animationMode="flyTo"
-            animationDuration={800}
-          />
-
-          {placeLocations.map((place) => (
-            <MapLibreGL.PointAnnotation
-              key={place.id}
-              id={place.id}
-              coordinate={[place.longitude, place.latitude]}
-              onSelected={() => onSelectPlace(place.id)}
-            >
-              <View
-                style={[
-                  styles.marker,
-                  selectedPlace?.id === place.id && styles.selectedMarker,
-                ]}
-              />
-            </MapLibreGL.PointAnnotation>
-          ))}
-        </MapLibreGL.MapView>
+        />
 
         <View style={styles.controlBar} pointerEvents="box-none">
           <Pressable

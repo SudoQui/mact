@@ -1,10 +1,14 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
+  Linking,
+  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 
@@ -19,10 +23,7 @@ type RestaurantDetailSheetProps = {
   place: Place | null;
 };
 
-type ChecklistItem = {
-  label: string;
-  value: string;
-};
+type ChecklistItem = { label: string; value: string };
 
 export function RestaurantDetailSheet({
   accentColor,
@@ -35,48 +36,74 @@ export function RestaurantDetailSheet({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSaved, setIsSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const { height: screenHeight } = useWindowDimensions();
+  const sheetHeight = Math.round(screenHeight * 0.52);
+  const [translateY] = useState(() => new Animated.Value(0));
+
+  const resetSheetPosition = useCallback(() => {
+    Animated.spring(translateY, {
+      toValue: 0,
+      useNativeDriver: true,
+      bounciness: 0,
+    }).start();
+  }, [translateY]);
+
+  const dismissSheet = useCallback(() => {
+    Animated.timing(translateY, {
+      toValue: sheetHeight,
+      duration: 180,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) onClose();
+    });
+  }, [onClose, sheetHeight, translateY]);
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_event, gesture) =>
+          gesture.dy > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+        onPanResponderMove: (_event, gesture) => {
+          translateY.setValue(Math.max(0, gesture.dy));
+        },
+        onPanResponderRelease: (_event, gesture) => {
+          if (gesture.dy > 96 || gesture.vy > 0.8) {
+            dismissSheet();
+          } else {
+            resetSheetPosition();
+          }
+        },
+        onPanResponderTerminate: resetSheetPosition,
+      }),
+    [dismissSheet, resetSheetPosition, translateY]
+  );
 
   const loadDetails = useCallback(async () => {
-    if (!place) {
-      return;
-    }
+    if (!place) return;
 
     try {
       setIsLoading(true);
       setDetails(null);
       setErrorMessage(null);
-
-      const nextDetails = await getFoodDetails(place.id);
-      setDetails(nextDetails);
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Something went wrong loading halal details.';
-
+      setDetails(await getFoodDetails(place.id));
+    } catch {
       setDetails(null);
-      setErrorMessage(message);
+      setErrorMessage('Could not load halal details. Check your connection and try again.');
     } finally {
       setIsLoading(false);
     }
   }, [place]);
 
   const loadSavedState = useCallback(async () => {
-    if (!place) {
-      return;
-    }
-
-    const nextIsSaved = await isPlaceSaved(place.id);
-    setIsSaved(nextIsSaved);
+    if (place) setIsSaved(await isPlaceSaved(place.id));
   }, [place]);
 
   const handleToggleSaved = useCallback(async () => {
-    if (!place || isSaving) {
-      return;
-    }
+    if (!place || isSaving) return;
 
     try {
       setIsSaving(true);
-      const nextIsSaved = await toggleSavedPlace(place.id);
-      setIsSaved(nextIsSaved);
+      setIsSaved(await toggleSavedPlace(place.id));
       onSavedChange?.();
     } finally {
       setIsSaving(false);
@@ -85,78 +112,99 @@ export function RestaurantDetailSheet({
 
   useEffect(() => {
     if (place) {
-      void Promise.resolve().then(async () => {
-        await Promise.all([loadDetails(), loadSavedState()]);
-      });
+      void Promise.resolve().then(() => Promise.all([loadDetails(), loadSavedState()]));
     }
   }, [loadDetails, loadSavedState, place]);
 
-  if (!place) {
-    return null;
-  }
+  useEffect(() => {
+    translateY.setValue(0);
+  }, [place?.id, translateY]);
+
+  if (!place) return null;
 
   const distance = formatDistance(place.distance_meters);
+  const meta = [place.cuisine ?? place.category, place.suburb].filter(Boolean).join(' · ');
 
   return (
-    <View style={styles.overlay} pointerEvents="box-none">
-      <Pressable accessibilityRole="button" onPress={onClose} style={styles.backdrop} />
-      <View style={styles.sheet}>
+    <Animated.View
+      style={[styles.sheet, { height: sheetHeight, transform: [{ translateY }] }]}
+    >
+      <View {...panResponder.panHandlers} style={styles.dragArea}>
         <View style={styles.handle} />
+      </View>
 
-        <View style={styles.header}>
-          <View style={styles.titleBlock}>
-            <Text style={styles.title}>{place.name}</Text>
-            <Text style={styles.meta}>
-              {[place.cuisine, place.suburb].filter(Boolean).join(' | ')}
-            </Text>
-            <Text style={styles.address}>{place.address}</Text>
-            {distance ? <Text style={[styles.distance, { color: accentColor }]}>{distance}</Text> : null}
-          </View>
-
-          <Pressable
-            accessibilityLabel="Close restaurant details"
-            accessibilityRole="button"
-            onPress={onClose}
-            style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}>
-            <Text style={styles.closeLabel}>Close</Text>
-          </Pressable>
+      <View style={styles.header}>
+        <View style={styles.titleBlock}>
+          <Text numberOfLines={2} style={styles.title}>{place.name}</Text>
+          {meta ? <Text style={styles.meta}>{meta}</Text> : null}
+          <Text numberOfLines={2} style={styles.address}>{place.address}</Text>
+          {distance ? <Text style={[styles.distance, { color: accentColor }]}>{distance}</Text> : null}
         </View>
 
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          {isLoading ? (
-            <View style={styles.stateContainer}>
-              <ActivityIndicator color={accentColor} size="large" />
-              <Text style={styles.stateText}>Loading halal details...</Text>
-            </View>
-          ) : null}
+        <Pressable
+          accessibilityLabel="Close restaurant details"
+          accessibilityRole="button"
+          hitSlop={8}
+          onPress={onClose}
+          style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
+        >
+          <Text style={styles.closeLabel}>×</Text>
+        </Pressable>
+      </View>
 
-          {!isLoading && errorMessage ? (
-            <View style={styles.stateContainer}>
-              <Text style={styles.errorTitle}>Unable to load details</Text>
-              <Text style={styles.stateText}>{errorMessage}</Text>
-              <Pressable
-                accessibilityRole="button"
-                onPress={loadDetails}
-                style={({ pressed }) => [
-                  styles.retryButton,
-                  { backgroundColor: accentColor },
-                  pressed && styles.pressed,
-                ]}>
-                <Text style={styles.primaryButtonLabel}>Retry</Text>
-              </Pressable>
-            </View>
-          ) : null}
+      <View style={styles.actions}>
+        <ActionButton
+          accentColor={accentColor}
+          label="Directions"
+          onPress={() => openDirections(place)}
+          primary
+        />
+        <ActionButton
+          accentColor={accentColor}
+          disabled={!place.phone}
+          label="Call"
+          onPress={() => openPhone(place.phone)}
+        />
+        <ActionButton
+          accentColor={accentColor}
+          disabled={isSaving}
+          label={isSaved ? 'Saved' : 'Save'}
+          onPress={handleToggleSaved}
+          selected={isSaved}
+        />
+      </View>
 
-          {!isLoading && !errorMessage && !details ? (
-            <View style={styles.stateContainer}>
-              <Text style={styles.emptyTitle}>No halal details yet</Text>
-              <Text style={styles.stateText}>
-                This restaurant has not had detailed halal information added.
-              </Text>
-            </View>
-          ) : null}
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {isLoading ? (
+          <View style={styles.stateContainer}>
+            <ActivityIndicator color={accentColor} />
+            <Text style={styles.stateText}>Checking halal details...</Text>
+          </View>
+        ) : null}
 
-          {!isLoading && !errorMessage && details ? (
+        {!isLoading && errorMessage ? (
+          <View style={styles.stateContainer}>
+            <Text style={styles.errorTitle}>Unable to load details</Text>
+            <Text style={styles.stateText}>{errorMessage}</Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={loadDetails}
+              style={({ pressed }) => [styles.retryButton, { backgroundColor: accentColor }, pressed && styles.pressed]}
+            >
+              <Text style={styles.primaryLabel}>Retry</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        {!isLoading && !errorMessage && !details ? (
+          <View style={styles.stateContainer}>
+            <Text style={styles.emptyTitle}>Halal details need review</Text>
+            <Text style={styles.stateText}>Detailed verification has not been added yet.</Text>
+          </View>
+        ) : null}
+
+        {!isLoading && !errorMessage && details ? (
+          <>
             <View style={styles.checklist}>
               {buildChecklist(details).map((item) => (
                 <View key={item.label} style={styles.checklistRow}>
@@ -165,148 +213,87 @@ export function RestaurantDetailSheet({
                 </View>
               ))}
             </View>
-          ) : null}
+            {details.halal_notes ? (
+              <View style={styles.notesCard}>
+                <Text style={styles.notesTitle}>Halal notes</Text>
+                <Text style={styles.notesText}>{details.halal_notes}</Text>
+              </View>
+            ) : null}
+          </>
+        ) : null}
+      </ScrollView>
+    </Animated.View>
+  );
+}
 
-          <View style={styles.actions}>
-            <Pressable
-              accessibilityRole="button"
-              onPress={noop}
-              style={({ pressed }) => [
-                styles.actionButton,
-                { backgroundColor: accentColor },
-                pressed && styles.pressed,
-              ]}>
-              <Text style={[styles.actionLabel, styles.primaryButtonLabel]}>Directions</Text>
-            </Pressable>
-
-            <Pressable
-              accessibilityRole="button"
-              onPress={noop}
-              style={({ pressed }) => [
-                styles.actionButton,
-                { borderColor: accentColor },
-                pressed && styles.pressed,
-              ]}>
-              <Text style={[styles.actionLabel, { color: accentColor }]}>Call</Text>
-            </Pressable>
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ selected: isSaved }}
-              disabled={isSaving}
-              onPress={handleToggleSaved}
-              style={({ pressed }) => [
-                styles.actionButton,
-                isSaved ? { backgroundColor: accentColor } : { borderColor: accentColor },
-                (pressed || isSaving) && styles.pressed,
-              ]}>
-              <Text
-                style={[
-                  styles.actionLabel,
-                  isSaved ? styles.primaryButtonLabel : { color: accentColor },
-                ]}>
-                {isSaved ? 'Saved' : 'Save'}
-              </Text>
-            </Pressable>
-
-            <Pressable
-              accessibilityRole="button"
-              onPress={noop}
-              style={({ pressed }) => [
-                styles.actionButton,
-                { borderColor: accentColor },
-                pressed && styles.pressed,
-              ]}>
-              <Text style={[styles.actionLabel, { color: accentColor }]}>Report Change</Text>
-            </Pressable>
-          </View>
-        </ScrollView>
-      </View>
-    </View>
+function ActionButton({
+  accentColor,
+  disabled = false,
+  label,
+  onPress,
+  primary = false,
+  selected = false,
+}: {
+  accentColor: string;
+  disabled?: boolean;
+  label: string;
+  onPress: () => void;
+  primary?: boolean;
+  selected?: boolean;
+}) {
+  const filled = primary || selected;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.actionButton,
+        filled ? { backgroundColor: accentColor } : { borderColor: accentColor },
+        (pressed || disabled) && styles.pressed,
+      ]}
+    >
+      <Text style={[styles.actionLabel, { color: filled ? '#FFFFFF' : accentColor }]}>{label}</Text>
+    </Pressable>
   );
 }
 
 function buildChecklist(details: FoodDetails): ChecklistItem[] {
-  const items: ChecklistItem[] = [
+  return [
     {
-      label: 'Meat provider confirmed halal',
-      value: formatBoolean(details.meat_provider_confirmed_halal),
+      label: 'Halal meat coverage',
+      value: formatText(details.halal_meat_coverage) ||
+        (details.meat_provider_confirmed_halal ? 'Confirmed' : 'Needs review'),
     },
-    {
-      label: 'Halal certified',
-      value: formatBoolean(details.halal_certified),
-    },
-    {
-      label: 'Certificate expiry',
-      value: formatDate(details.halal_certificate_expiry),
-    },
-    {
-      label: 'Hand slaughtered',
-      value: formatText(details.hand_slaughtered),
-    },
+    { label: 'Halal certified', value: formatBoolean(details.halal_certified) },
+    { label: 'Hand slaughtered', value: formatText(details.hand_slaughtered) },
+    formatPorkChecklist(details),
+    formatAlcoholChecklist(details),
+    { label: 'Cross contamination risk', value: formatText(details.cross_contamination_risk) },
+    { label: 'Verification source', value: formatText(details.verification_source) },
+    { label: 'Confidence level', value: formatText(details.confidence_level) },
+    { label: 'Details last updated', value: formatDate(details.details_last_updated) },
   ];
-
-  // Pork status mapping
-  items.push(formatPorkChecklist(details));
-
-  // Alcohol status mapping
-  items.push(formatAlcoholChecklist(details));
-
-  items.push(
-    {
-      label: 'Details last updated',
-      value: formatDate(details.details_last_updated),
-    },
-    {
-      label: 'Verification source',
-      value: formatText(details.verification_source),
-    },
-    {
-      label: 'Confidence level',
-      value: formatText(details.confidence_level),
-    }
-  );
-
-  return items;
 }
 
 function formatAlcoholChecklist(details: FoodDetails): ChecklistItem {
-  const status = details.alcohol_status ?? 'unknown';
-
-  if (status === 'none_served') {
-    return { label: 'No alcohol', value: 'Confirmed' };
-  }
-
-  if (status === 'served') {
-    return { label: 'Sells alcohol', value: 'Yes' };
-  }
-
-  return { label: 'Alcohol status', value: 'Needs verification' };
+  if (details.alcohol_status === 'none_served') return { label: 'Alcohol status', value: 'None served' };
+  if (details.alcohol_status === 'served') return { label: 'Alcohol status', value: 'Served' };
+  return { label: 'Alcohol status', value: 'Needs review' };
 }
 
 function formatPorkChecklist(details: FoodDetails): ChecklistItem {
-  const status = details.pork_status ?? 'unknown';
-
-  if (status === 'none_served') {
-    return { label: 'No pork', value: 'Confirmed' };
-  }
-
-  if (status === 'served') {
-    return { label: 'Serves pork', value: 'Yes' };
-  }
-
-  return { label: 'Pork status', value: 'Needs verification' };
+  if (details.pork_status === 'none_served') return { label: 'Pork status', value: 'None served' };
+  if (details.pork_status === 'served') return { label: 'Pork status', value: 'Served' };
+  return { label: 'Pork status', value: 'Needs review' };
 }
 
 function formatBoolean(value: boolean) {
   return value ? 'Yes' : 'No';
 }
 
-function formatText(value: string | null) {
-  if (!value) {
-    return 'Not provided';
-  }
-
+function formatText(value: string | null | undefined) {
+  if (!value) return '';
   return value
     .split('_')
     .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
@@ -314,199 +301,104 @@ function formatText(value: string | null) {
 }
 
 function formatDate(value: string | null) {
-  if (!value) {
-    return 'Not provided';
-  }
-
+  if (!value) return 'Needs review';
   const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return date.toLocaleDateString(undefined, {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-function noop() {
-  return undefined;
+function openDirections(place: Place) {
+  const destination = encodeURIComponent(`${place.latitude},${place.longitude}`);
+  void Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${destination}`);
+}
+
+function openPhone(phone: string | null) {
+  if (phone) void Linking.openURL(`tel:${phone}`);
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    bottom: 0,
-    justifyContent: 'flex-end',
-    left: 0,
-    position: 'absolute',
-    right: 0,
-    top: 0,
-  },
-  backdrop: {
-    backgroundColor: 'rgba(21, 25, 34, 0.28)',
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-    right: 0,
-    top: 0,
-  },
   sheet: {
-    maxHeight: '78%',
-    borderTopLeftRadius: 8,
-    borderTopRightRadius: 8,
-    backgroundColor: '#FFFFFF',
-    paddingTop: 10,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    backgroundColor: '#FFFCF7',
+    paddingTop: 9,
     paddingHorizontal: 18,
-    paddingBottom: 18,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: -8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 20,
-    elevation: 8,
+    paddingBottom: 12,
+    elevation: 12,
   },
   handle: {
-    width: 46,
+    width: 42,
     height: 5,
     borderRadius: 3,
-    backgroundColor: '#D7DCE2',
+    backgroundColor: '#D8D2C9',
     alignSelf: 'center',
-    marginBottom: 14,
   },
-  header: {
-    flexDirection: 'row',
-    gap: 12,
-    alignItems: 'flex-start',
+  dragArea: {
+    minHeight: 24,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    paddingTop: 1,
   },
-  titleBlock: {
-    flex: 1,
-    gap: 4,
-  },
-  title: {
-    color: '#151922',
-    fontSize: 22,
-    fontWeight: '900',
-    lineHeight: 28,
-  },
-  meta: {
-    color: '#59606B',
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  address: {
-    color: '#3F4652',
-    fontSize: 14,
-    fontWeight: '600',
-    lineHeight: 20,
-  },
-  distance: {
-    fontSize: 14,
-    fontWeight: '900',
-  },
+  header: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
+  titleBlock: { flex: 1, gap: 2 },
+  title: { color: '#202421', fontSize: 20, fontWeight: '900', lineHeight: 24 },
+  meta: { color: '#656B67', fontSize: 13, fontWeight: '800' },
+  address: { color: '#4B514D', fontSize: 12, fontWeight: '600', lineHeight: 17 },
+  distance: { fontSize: 12, fontWeight: '900' },
   closeButton: {
-    minHeight: 38,
-    borderRadius: 8,
-    backgroundColor: '#EEF1F5',
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#F0ECE6',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 12,
   },
-  closeLabel: {
-    color: '#3F4652',
-    fontSize: 13,
-    fontWeight: '900',
-  },
-  content: {
-    gap: 14,
-    paddingTop: 18,
-    paddingBottom: 8,
-  },
-  checklist: {
-    gap: 8,
-  },
-  checklistRow: {
-    minHeight: 48,
-    borderRadius: 8,
-    backgroundColor: '#F4F6F8',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  checkLabel: {
-    flex: 1,
-    color: '#303742',
-    fontSize: 14,
-    fontWeight: '800',
-    lineHeight: 19,
-  },
-  checkValue: {
-    maxWidth: '44%',
-    fontSize: 14,
-    fontWeight: '900',
-    textAlign: 'right',
-  },
-  actions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
+  closeLabel: { color: '#303531', fontSize: 28, fontWeight: '500', lineHeight: 30 },
+  actions: { flexDirection: 'row', gap: 8, marginTop: 10 },
   actionButton: {
+    flex: 1,
     minHeight: 44,
-    minWidth: '47%',
-    flexGrow: 1,
-    borderRadius: 8,
+    borderRadius: 12,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
   },
-  actionLabel: {
-    fontSize: 14,
-    fontWeight: '900',
-    textAlign: 'center',
-  },
-  primaryButtonLabel: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '900',
-  },
-  stateContainer: {
-    borderRadius: 8,
-    backgroundColor: '#F4F6F8',
+  actionLabel: { fontSize: 13, fontWeight: '900' },
+  content: { gap: 10, paddingTop: 12, paddingBottom: 18 },
+  checklist: { gap: 6 },
+  checklistRow: {
+    minHeight: 40,
+    borderRadius: 11,
+    backgroundColor: '#F4F1EB',
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     gap: 10,
-    padding: 18,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
   },
-  stateText: {
-    color: '#4C5360',
-    fontSize: 14,
-    fontWeight: '700',
-    lineHeight: 20,
-    textAlign: 'center',
-  },
-  emptyTitle: {
-    color: '#151922',
-    fontSize: 17,
-    fontWeight: '900',
-  },
-  errorTitle: {
-    color: '#9E2F24',
-    fontSize: 17,
-    fontWeight: '900',
-  },
-  retryButton: {
-    minHeight: 42,
-    borderRadius: 8,
+  checkLabel: { flex: 1, color: '#3C423E', fontSize: 12, fontWeight: '800' },
+  checkValue: { maxWidth: '45%', fontSize: 12, fontWeight: '900', textAlign: 'right' },
+  notesCard: { borderRadius: 12, backgroundColor: '#FFF0E8', gap: 4, padding: 12 },
+  notesTitle: { color: '#6F2D1F', fontSize: 13, fontWeight: '900' },
+  notesText: { color: '#4B403C', fontSize: 13, fontWeight: '600', lineHeight: 19 },
+  stateContainer: {
+    borderRadius: 12,
+    backgroundColor: '#F4F1EB',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 18,
+    gap: 8,
+    padding: 16,
   },
-  pressed: {
-    opacity: 0.76,
-  },
+  stateText: { color: '#555C57', fontSize: 13, fontWeight: '700', textAlign: 'center' },
+  emptyTitle: { color: '#252A27', fontSize: 15, fontWeight: '900' },
+  errorTitle: { color: '#9E2F24', fontSize: 15, fontWeight: '900' },
+  retryButton: { minHeight: 40, borderRadius: 10, justifyContent: 'center', paddingHorizontal: 18 },
+  primaryLabel: { color: '#FFFFFF', fontSize: 13, fontWeight: '900' },
+  pressed: { opacity: 0.68 },
 });

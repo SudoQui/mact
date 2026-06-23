@@ -1,7 +1,17 @@
-import { Map } from '@maplibre/maplibre-react-native';
+import {
+  Camera,
+  type CameraRef,
+  GeoJSONSource,
+  Layer,
+  Map,
+  Marker,
+  type StyleSpecification,
+  type ViewStateChangeEvent,
+} from '@maplibre/maplibre-react-native';
 import type { ReactNode } from 'react';
-import { useCallback } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
+import type { NativeSyntheticEvent } from 'react-native';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import type { HomeResult } from '@/components/home/MapResults';
 import type { Place } from '@/services/placesService';
@@ -13,15 +23,39 @@ type RealFoodMapProps = {
   onSelectPlace: (placeId: string) => void;
   userLocation?: { latitude: number; longitude: number } | null;
   nearMeActive: boolean;
+  isExpanded: boolean;
+  onToggleExpanded: () => void;
   onMapInteraction?: () => void;
   children?: ReactNode;
 };
 
-const DEMO_STYLE_URL = 'https://demotiles.maplibre.org/style.json';
-const CANBERRA_CENTER: [number, number] = [149.1300, -35.2809];
+// TODO: Replace this development-only OSM raster source with a production tile provider.
+const DEVELOPMENT_RASTER_STYLE: StyleSpecification = {
+  version: 8,
+  sources: {
+    'osm-raster': {
+      type: 'raster',
+      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+      tileSize: 256,
+      attribution: '© OpenStreetMap contributors',
+      maxzoom: 19,
+    },
+  },
+  layers: [
+    {
+      id: 'osm-raster-layer',
+      type: 'raster',
+      source: 'osm-raster',
+      minzoom: 0,
+      maxzoom: 19,
+    },
+  ],
+};
+const CANBERRA_CENTER: [number, number] = [149.13, -35.2809];
 const DEFAULT_ZOOM = 11;
 const USER_ZOOM = 13;
-const FIT_PADDING = 60;
+const SELECTED_ZOOM = 14;
+const FIT_PADDING = 48;
 
 export function RealFoodMap({
   accentColor,
@@ -30,107 +64,272 @@ export function RealFoodMap({
   onSelectPlace,
   userLocation,
   nearMeActive,
+  isExpanded,
+  onToggleExpanded,
   onMapInteraction,
   children,
 }: RealFoodMapProps) {
-  const fitRestaurants = useCallback(() => {
-    // No-op for now while debugging MapLibre exports
-    return;
-  }, []);
+  const cameraRef = useRef<CameraRef>(null);
+  const { height: screenHeight } = useWindowDimensions();
+  const splitMapHeight = Math.round(screenHeight * 0.4);
 
-  const handleRegionDidChange = useCallback((_event?: any) => {
-    onMapInteraction?.();
-  }, [onMapInteraction]);
+  const foodPlaces = useMemo(
+    () =>
+      places
+        .filter((result): result is Extract<HomeResult, { kind: 'place' }> => result.kind === 'place')
+        .map((result) => result.item)
+        .filter(
+          (place) => Number.isFinite(place.latitude) && Number.isFinite(place.longitude)
+        ),
+    [places]
+  );
+
+  const userGeoJson = useMemo<GeoJSON.FeatureCollection<GeoJSON.Point>>(
+    () => ({
+      type: 'FeatureCollection',
+      features: userLocation
+        ? [
+            {
+              type: 'Feature',
+              geometry: {
+                type: 'Point',
+                coordinates: [userLocation.longitude, userLocation.latitude],
+              },
+              properties: {},
+            },
+          ]
+        : [],
+    }),
+    [userLocation]
+  );
+
+  useEffect(() => {
+    if (selectedPlace) {
+      cameraRef.current?.easeTo({
+        center: [selectedPlace.longitude, selectedPlace.latitude],
+        zoom: SELECTED_ZOOM,
+        padding: {
+          top: 30,
+          right: 20,
+          bottom: isExpanded ? Math.round(screenHeight * 0.45) : 110,
+          left: 20,
+        },
+        duration: 650,
+      });
+      return;
+    }
+
+    if (nearMeActive && userLocation) {
+      cameraRef.current?.easeTo({
+        center: [userLocation.longitude, userLocation.latitude],
+        zoom: USER_ZOOM,
+        duration: 650,
+      });
+      return;
+    }
+
+    if (foodPlaces.length === 1) {
+      cameraRef.current?.easeTo({
+        center: [foodPlaces[0].longitude, foodPlaces[0].latitude],
+        zoom: USER_ZOOM,
+        duration: 550,
+      });
+      return;
+    }
+
+    cameraRef.current?.easeTo({ center: CANBERRA_CENTER, zoom: DEFAULT_ZOOM, duration: 550 });
+  }, [foodPlaces, isExpanded, nearMeActive, screenHeight, selectedPlace, userLocation]);
+
+  const fitRestaurants = useCallback(() => {
+    if (foodPlaces.length === 0) return;
+
+    if (foodPlaces.length === 1) {
+      cameraRef.current?.easeTo({
+        center: [foodPlaces[0].longitude, foodPlaces[0].latitude],
+        zoom: USER_ZOOM,
+        duration: 550,
+      });
+      return;
+    }
+
+    const longitudes = foodPlaces.map((place) => place.longitude);
+    const latitudes = foodPlaces.map((place) => place.latitude);
+    cameraRef.current?.fitBounds(
+      [Math.min(...longitudes), Math.min(...latitudes), Math.max(...longitudes), Math.max(...latitudes)],
+      {
+        padding: { top: FIT_PADDING, right: FIT_PADDING, bottom: FIT_PADDING, left: FIT_PADDING },
+        duration: 650,
+      }
+    );
+  }, [foodPlaces]);
+
+  const handleRegionDidChange = useCallback(
+    (event: NativeSyntheticEvent<ViewStateChangeEvent>) => {
+      if (event.nativeEvent.userInteraction) onMapInteraction?.();
+    },
+    [onMapInteraction]
+  );
 
   return (
     <View style={styles.container}>
-      <View style={styles.mapWrapper}>
+      <View
+        style={[
+          styles.mapWrapper,
+          isExpanded ? styles.expandedMapWrapper : { height: splitMapHeight },
+        ]}>
         <Map
-          style={styles.map}
-          mapStyle={DEMO_STYLE_URL}
+          attribution
+          attributionPosition={{ bottom: 8, left: 8 }}
+          compass
+          compassPosition={{ top: 12, left: 12 }}
+          logo={false}
+          mapStyle={DEVELOPMENT_RASTER_STYLE}
           onRegionDidChange={handleRegionDidChange}
-        />
+          style={styles.map}
+        >
+          <Camera
+            ref={cameraRef}
+            initialViewState={{ center: CANBERRA_CENTER, zoom: DEFAULT_ZOOM }}
+          />
 
-        <View style={styles.controlBar} pointerEvents="box-none">
+          {/* TODO: Add zoom-aware sizing when native view markers expose stable zoom styling. */}
+          {foodPlaces.map((place) => {
+            const isSelected = selectedPlace?.id === place.id;
+            return (
+              <Marker
+                anchor="center"
+                id={place.id}
+                key={place.id}
+                lngLat={[place.longitude, place.latitude]}
+                onPress={() => onSelectPlace(place.id)}
+              >
+                <View
+                  accessibilityLabel={`${place.name}, ${place.category}`}
+                  accessibilityRole="button"
+                  style={[
+                    styles.restaurantMarker,
+                    { backgroundColor: accentColor },
+                    isSelected && styles.selectedRestaurantMarker,
+                  ]}
+                >
+                  <Text style={[styles.restaurantMarkerLabel, isSelected && styles.selectedMarkerLabel]}>
+                    {getCategoryPinLabel(place.category)}
+                  </Text>
+                </View>
+              </Marker>
+            );
+          })}
+
+          <GeoJSONSource data={userGeoJson} id="mact-user-location">
+            <Layer
+              id="mact-user-location-halo"
+              type="circle"
+              style={{ circleColor: '#2878D0', circleOpacity: 0.2, circleRadius: 15 }}
+            />
+            <Layer
+              id="mact-user-location-dot"
+              type="circle"
+              style={{
+                circleColor: '#2878D0',
+                circleRadius: 6,
+                circleStrokeColor: '#FFFFFF',
+                circleStrokeWidth: 2,
+              }}
+            />
+          </GeoJSONSource>
+        </Map>
+
+        {/* TODO: Replace this tint and raster basemap with a cleaner production vector style. */}
+        <View pointerEvents="none" style={styles.mapTint} />
+
+        <View style={styles.mapActions}>
           <Pressable
+            accessibilityLabel="Fit visible restaurants"
             accessibilityRole="button"
             onPress={fitRestaurants}
-            style={({ pressed }) => [styles.controlButton, pressed && styles.controlPressed]}
+            style={({ pressed }) => [styles.mapActionButton, pressed && styles.pressed]}
           >
-            <Text style={styles.controlLabel}>Fit Restaurants</Text>
+            <Text style={styles.mapActionLabel}>Fit Restaurants</Text>
+          </Pressable>
+          <Pressable
+            accessibilityLabel={isExpanded ? 'Collapse map' : 'Expand map'}
+            accessibilityRole="button"
+            onPress={onToggleExpanded}
+            style={({ pressed }) => [styles.mapActionButton, pressed && styles.pressed]}
+          >
+            <Text style={styles.mapActionLabel}>
+              {isExpanded ? 'Collapse Map' : 'Expand Map'}
+            </Text>
           </Pressable>
         </View>
       </View>
 
-      <View style={styles.children}>{children}</View>
+      {!isExpanded ? <View style={styles.children}>{children}</View> : null}
     </View>
   );
 }
 
+function getCategoryPinLabel(category: string) {
+  const normalized = category.toLowerCase();
+  if (normalized.includes('cafe') || normalized.includes('coffee')) return 'C';
+  if (normalized.includes('butcher')) return 'B';
+  if (normalized.includes('grocery') || normalized.includes('grocer')) return 'G';
+  if (normalized.includes('dessert') || normalized.includes('sweet')) return 'D';
+  return 'R';
+}
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    gap: 14,
-  },
+  container: { flex: 1, gap: 10 },
   mapWrapper: {
-    minHeight: 280,
-    borderRadius: 12,
+    minHeight: 240,
+    borderRadius: 18,
     overflow: 'hidden',
-    backgroundColor: '#F4F7FB',
+    backgroundColor: '#E7ECE8',
   },
-  map: {
-    width: '100%',
-    height: 280,
+  expandedMapWrapper: { flex: 1, height: undefined },
+  map: { flex: 1 },
+  mapTint: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255, 249, 240, 0.06)',
   },
-  marker: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: '#208AEF',
+  restaurantMarker: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 3,
     borderColor: '#FFFFFF',
-    borderWidth: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.24,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  selectedMarker: {
-    backgroundColor: '#FF6B6B',
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-  },
-  controlBar: {
-    position: 'absolute',
-    left: 12,
-    top: 12,
-    gap: 10,
-    alignItems: 'flex-start',
-    zIndex: 50,
-  },
-  controlButton: {
-    minHeight: 40,
-    borderRadius: 10,
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
+    elevation: 5,
+  },
+  selectedRestaurantMarker: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    borderWidth: 4,
+    backgroundColor: '#A92F1A',
+    elevation: 8,
+  },
+  restaurantMarkerLabel: { color: '#FFFFFF', fontSize: 14, fontWeight: '900' },
+  selectedMarkerLabel: { fontSize: 17 },
+  mapActions: {
+    position: 'absolute',
+    right: 10,
+    bottom: 10,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  mapActionButton: {
+    minWidth: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 13,
     elevation: 4,
   },
-  controlLabel: {
-    color: '#25303D',
-    fontSize: 13,
-    fontWeight: '900',
-  },
-  controlPressed: {
-    opacity: 0.75,
-  },
-  children: {
-    flex: 1,
-  },
+  mapActionLabel: { color: '#2A302D', fontSize: 13, fontWeight: '900' },
+  pressed: { opacity: 0.72 },
+  children: { flex: 1, minHeight: 0 },
 });

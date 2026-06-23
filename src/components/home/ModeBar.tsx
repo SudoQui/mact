@@ -34,13 +34,13 @@ export function ModeBar({ selectedMode, onSelectMode }: ModeBarProps) {
 
 const styles = StyleSheet.create({
   container: {
-    minHeight: 62,
-    borderRadius: 8,
+    minHeight: 54,
+    borderRadius: 12,
     backgroundColor: '#FFFFFF',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    padding: 8,
+    gap: 5,
+    padding: 5,
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.12,
@@ -49,8 +49,8 @@ const styles = StyleSheet.create({
   },
   button: {
     flex: 1,
-    minHeight: 46,
-    borderRadius: 8,
+    minHeight: 44,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 8,

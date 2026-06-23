@@ -11,6 +11,8 @@ type RealFoodMapProps = {
   onSelectPlace: (placeId: string) => void;
   userLocation?: { latitude: number; longitude: number } | null;
   nearMeActive: boolean;
+  isExpanded: boolean;
+  onToggleExpanded: () => void;
   onMapInteraction?: () => void;
   children?: ReactNode;
 };
@@ -22,6 +24,8 @@ export function RealFoodMap({
   onSelectPlace,
   userLocation,
   nearMeActive,
+  isExpanded,
+  onToggleExpanded,
   onMapInteraction,
   children,
 }: RealFoodMapProps) {
@@ -33,6 +37,8 @@ export function RealFoodMap({
       onSelectPlace={onSelectPlace}
       userLocation={userLocation}
       nearMeActive={nearMeActive}
+      isExpanded={isExpanded}
+      onToggleExpanded={onToggleExpanded}
       onMapInteraction={onMapInteraction}
     >
       {children}

@@ -10,6 +10,8 @@ type PlaceholderMapProps = {
   onPressPlace?: (placeId: string) => void;
   onMapDrag?: () => void;
   onResetView?: () => void;
+  isExpanded?: boolean;
+  onToggleExpanded?: () => void;
 };
 
 const CANBERRA_BOUNDS = {
@@ -40,6 +42,8 @@ export function PlaceholderMap({
   onPressPlace,
   onMapDrag,
   onResetView,
+  isExpanded = false,
+  onToggleExpanded,
 }: PlaceholderMapProps) {
   const [scale, setScale] = useState(DEFAULT_SCALE);
   const [translateX, setTranslateX] = useState(0);
@@ -151,8 +155,10 @@ export function PlaceholderMap({
         style={styles.mapArea}
         onLayout={(event) => setLayout(event.nativeEvent.layout)}>
         <View
-          style={[styles.mapContent, { transform: [{ translateX }, { translateY }, { scale }] }]}
-          pointerEvents="box-none"
+          style={[
+            styles.mapContent,
+            { pointerEvents: 'box-none', transform: [{ translateX }, { translateY }, { scale }] },
+          ]}
           onStartShouldSetResponder={() => true}
           onResponderGrant={handleResponderGrant}
           onResponderMove={handleResponderMove}
@@ -207,12 +213,19 @@ export function PlaceholderMap({
             accessibilityRole="button"
             onPress={fitRestaurants}
             style={({ pressed }) => [styles.actionButton, pressed && styles.controlPressed]}>
-            <Text style={styles.actionLabel}>Fit</Text>
+            <Text style={styles.actionLabel}>Fit Restaurants</Text>
+          </Pressable>
+          <Pressable
+            accessibilityLabel={isExpanded ? 'Collapse map' : 'Expand map'}
+            accessibilityRole="button"
+            onPress={onToggleExpanded}
+            style={({ pressed }) => [styles.actionButton, pressed && styles.controlPressed]}>
+            <Text style={styles.actionLabel}>{isExpanded ? 'Collapse Map' : 'Expand Map'}</Text>
           </Pressable>
         </View>
       </View>
 
-      <View style={styles.childContainer}>{children}</View>
+      {!isExpanded ? <View style={styles.childContainer}>{children}</View> : null}
     </View>
   );
 }

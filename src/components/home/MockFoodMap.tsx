@@ -11,6 +11,8 @@ type MockFoodMapProps = {
   onSelectPlace: (placeId: string) => void;
   userLocation?: { latitude: number; longitude: number } | null;
   nearMeActive: boolean;
+  isExpanded: boolean;
+  onToggleExpanded: () => void;
   onMapInteraction?: () => void;
   children?: ReactNode;
 };
@@ -22,6 +24,8 @@ export function MockFoodMap({
   onSelectPlace,
   userLocation,
   nearMeActive,
+  isExpanded,
+  onToggleExpanded,
   onMapInteraction,
   children,
 }: MockFoodMapProps) {
@@ -31,7 +35,9 @@ export function MockFoodMap({
       results={places}
       onPressPlace={onSelectPlace}
       onMapDrag={onMapInteraction}
-      onResetView={onMapInteraction}>
+      onResetView={onMapInteraction}
+      isExpanded={isExpanded}
+      onToggleExpanded={onToggleExpanded}>
       {children}
     </PlaceholderMap>
   );

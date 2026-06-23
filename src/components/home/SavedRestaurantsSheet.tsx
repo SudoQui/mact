@@ -62,7 +62,7 @@ export function SavedRestaurantsSheet({
   }
 
   return (
-    <View style={styles.overlay} pointerEvents="box-none">
+    <View style={styles.overlay}>
       <Pressable accessibilityRole="button" onPress={onClose} style={styles.backdrop} />
       <View style={styles.sheet}>
         <View style={styles.handle} />
@@ -152,6 +152,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 0,
     top: 0,
+    pointerEvents: 'box-none',
   },
   backdrop: {
     backgroundColor: 'rgba(21, 25, 34, 0.28)',

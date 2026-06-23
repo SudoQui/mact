@@ -22,6 +22,8 @@ type MapResultsProps = {
   onPressFoodPlace: (place: Place) => void;
   onRetry: () => void;
   results: HomeResult[];
+  selectedPlaceId?: string | null;
+  isCollapsedPreview?: boolean;
 };
 
 export function MapResults({
@@ -32,12 +34,14 @@ export function MapResults({
   onPressFoodPlace,
   onRetry,
   results,
+  selectedPlaceId,
+  isCollapsedPreview = false,
 }: MapResultsProps) {
   if (isLoading) {
     return (
       <View style={styles.stateContainer}>
         <ActivityIndicator color={accentColor} size="large" />
-        <Text style={styles.stateText}>Loading results...</Text>
+        <Text style={styles.stateText}>Finding halal food around Canberra...</Text>
       </View>
     );
   }
@@ -45,8 +49,8 @@ export function MapResults({
   if (errorMessage) {
     return (
       <View style={styles.stateContainer}>
-        <Text style={styles.errorTitle}>Unable to load results</Text>
-        <Text style={styles.stateText}>{errorMessage}</Text>
+        <Text style={styles.errorTitle}>Could not load halal food places.</Text>
+        <Text style={styles.stateText}>Check your connection and try again.</Text>
         <Pressable
           accessibilityRole="button"
           onPress={onRetry}
@@ -71,16 +75,23 @@ export function MapResults({
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
-      {results.map((result) => (
+    <View style={styles.resultsContainer}>
+      <View style={styles.listHeader}>
+        <Text style={styles.listTitle}>{results.length} halal {results.length === 1 ? 'place' : 'places'}</Text>
+        {isCollapsedPreview ? <Text style={styles.previewHint}>Map view</Text> : null}
+      </View>
+      <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
+      {(isCollapsedPreview ? results.slice(0, 1) : results).map((result) => (
         <ResultCard
           accentColor={accentColor}
           key={`${result.kind}-${result.item.id}`}
           onPressFoodPlace={onPressFoodPlace}
           result={result}
+          selectedPlaceId={selectedPlaceId}
         />
       ))}
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -88,15 +99,21 @@ type ResultCardProps = {
   accentColor: string;
   onPressFoodPlace: (place: Place) => void;
   result: HomeResult;
+  selectedPlaceId?: string | null;
 };
 
-function ResultCard({ accentColor, onPressFoodPlace, result }: ResultCardProps) {
+function ResultCard({ accentColor, onPressFoodPlace, result, selectedPlaceId }: ResultCardProps) {
   if (result.kind === 'event') {
     return <EventCard accentColor={accentColor} event={result.item} />;
   }
 
   return (
-    <PlaceCard accentColor={accentColor} onPressFoodPlace={onPressFoodPlace} place={result.item} />
+    <PlaceCard
+      accentColor={accentColor}
+      isSelected={selectedPlaceId === result.item.id}
+      onPressFoodPlace={onPressFoodPlace}
+      place={result.item}
+    />
   );
 }
 
@@ -104,11 +121,13 @@ type PlaceCardProps = {
   accentColor: string;
   onPressFoodPlace: (place: Place) => void;
   place: Place;
+  isSelected: boolean;
 };
 
-function PlaceCard({ accentColor, onPressFoodPlace, place }: PlaceCardProps) {
-  const detail = [place.cuisine ?? place.category, place.suburb].filter(Boolean).join(' | ');
+function PlaceCard({ accentColor, isSelected, onPressFoodPlace, place }: PlaceCardProps) {
+  const detail = [place.cuisine ?? place.category, place.suburb].filter(Boolean).join(' · ');
   const distance = formatDistance(place.distance_meters);
+  const confidence = formatConfidence(place.confidence_level);
   const card = (
     <>
       <View style={styles.cardHeader}>
@@ -116,9 +135,14 @@ function PlaceCard({ accentColor, onPressFoodPlace, place }: PlaceCardProps) {
         {distance ? <Text style={[styles.distance, { color: accentColor }]}>{distance}</Text> : null}
       </View>
       {detail ? <Text style={styles.meta}>{detail}</Text> : null}
-      <Text numberOfLines={2} style={styles.bodyText}>
-        {place.description ?? place.address}
-      </Text>
+      {place.description ? (
+        <Text numberOfLines={1} style={styles.bodyText}>{place.description}</Text>
+      ) : null}
+      <View style={styles.statusRow}>
+        <View style={[styles.confidenceChip, { backgroundColor: `${accentColor}12` }]}>
+          <Text style={[styles.confidenceText, { color: accentColor }]}>{confidence}</Text>
+        </View>
+      </View>
     </>
   );
 
@@ -132,12 +156,18 @@ function PlaceCard({ accentColor, onPressFoodPlace, place }: PlaceCardProps) {
       onPress={() => onPressFoodPlace(place)}
       style={({ pressed }) => [
         styles.card,
-        { borderLeftColor: accentColor },
+        isSelected ? styles.selectedCard : null,
+        isSelected ? { borderColor: accentColor } : null,
         pressed && styles.pressed,
       ]}>
       {card}
     </Pressable>
   );
+}
+
+function formatConfidence(value: Place['confidence_level']) {
+  if (!value) return 'Needs review';
+  return `${value.charAt(0).toUpperCase()}${value.slice(1)} confidence`;
 }
 
 type EventCardProps = {
@@ -180,22 +210,49 @@ function formatEventDate(value: string) {
 }
 
 const styles = StyleSheet.create({
+  resultsContainer: {
+    flex: 1,
+    minHeight: 0,
+  },
+  listHeader: {
+    minHeight: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 2,
+  },
+  listTitle: {
+    color: '#2B302D',
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  previewHint: {
+    color: '#777D79',
+    fontSize: 12,
+    fontWeight: '700',
+  },
   list: {
-    gap: 10,
-    paddingTop: 4,
+    gap: 7,
+    paddingTop: 2,
     paddingBottom: 8,
   },
   card: {
-    borderLeftWidth: 5,
-    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#EBE5DC',
+    borderRadius: 10,
     backgroundColor: '#FFFFFF',
-    padding: 14,
-    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 3,
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.05,
     shadowRadius: 10,
     elevation: 2,
+  },
+  selectedCard: {
+    backgroundColor: '#FFF7F2',
+    borderWidth: 2,
   },
   cardTitle: {
     flex: 1,
@@ -217,6 +274,19 @@ const styles = StyleSheet.create({
     color: '#59606B',
     fontSize: 13,
     fontWeight: '800',
+  },
+  statusRow: {
+    flexDirection: 'row',
+    marginTop: 3,
+  },
+  confidenceChip: {
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  confidenceText: {
+    fontSize: 11,
+    fontWeight: '900',
   },
   bodyText: {
     color: '#3F4652',

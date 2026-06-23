@@ -25,12 +25,12 @@ export function HomeSearchBar({ accentColor, value, onChangeText }: HomeSearchBa
 
 const styles = StyleSheet.create({
   container: {
-    minHeight: 52,
-    borderWidth: 2,
-    borderRadius: 8,
+    minHeight: 46,
+    borderWidth: 1,
+    borderRadius: 12,
     backgroundColor: '#FFFFFF',
     justifyContent: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.08,

@@ -2,6 +2,8 @@ import type { ReactNode } from 'react';
 
 import type { HomeResult } from '@/components/home/MapResults';
 import { MockFoodMap } from '@/components/home/MockFoodMap';
+// Metro resolves this to .native.tsx or .web.tsx; ESLint does not resolve platform suffixes.
+// eslint-disable-next-line import/no-unresolved
 import { RealFoodMap } from '@/components/maps/RealFoodMap';
 import type { Place } from '@/services/placesService';
 
@@ -12,6 +14,8 @@ type FoodMapProps = {
   onSelectPlace: (placeId: string) => void;
   userLocation?: { latitude: number; longitude: number } | null;
   nearMeActive: boolean;
+  isExpanded: boolean;
+  onToggleExpanded: () => void;
   onMapInteraction?: () => void;
   children?: ReactNode;
 };
@@ -25,6 +29,8 @@ export function FoodMap({
   onSelectPlace,
   userLocation,
   nearMeActive,
+  isExpanded,
+  onToggleExpanded,
   onMapInteraction,
   children,
 }: FoodMapProps) {
@@ -37,6 +43,8 @@ export function FoodMap({
         onSelectPlace={onSelectPlace}
         userLocation={userLocation}
         nearMeActive={nearMeActive}
+        isExpanded={isExpanded}
+        onToggleExpanded={onToggleExpanded}
         onMapInteraction={onMapInteraction}
       >
         {children}
@@ -52,6 +60,8 @@ export function FoodMap({
       onSelectPlace={onSelectPlace}
       userLocation={userLocation}
       nearMeActive={nearMeActive}
+      isExpanded={isExpanded}
+      onToggleExpanded={onToggleExpanded}
       onMapInteraction={onMapInteraction}
     >
       {children}

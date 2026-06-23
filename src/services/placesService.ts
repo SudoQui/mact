@@ -17,6 +17,7 @@ export type Place = {
   longitude: number;
   opening_hours: Record<string, unknown>;
   distance_meters?: number;
+  confidence_level?: FoodDetails['confidence_level'];
 };
 
 export type FoodDetails = {
@@ -24,6 +25,7 @@ export type FoodDetails = {
   place_id: string;
   meat_provider_confirmed_halal: boolean;
   halal_certified: boolean;
+  halal_meat_coverage: string | null;
   halal_certificate_expiry: string | null;
   hand_slaughtered: 'yes' | 'no' | 'unknown';
   pork_status: 'none_served' | 'served' | 'unknown' | null;
@@ -69,7 +71,8 @@ export async function getPlacesByMode(mode: AppMode): Promise<Place[]> {
       website,
       latitude,
       longitude,
-      opening_hours
+      opening_hours,
+      food_details(confidence_level)
     `
     )
     .eq('mode', mode)
@@ -80,7 +83,12 @@ export async function getPlacesByMode(mode: AppMode): Promise<Place[]> {
     throw new Error(error.message);
   }
 
-  return (data ?? []) as Place[];
+  return (data ?? []).map(({ food_details, ...place }) => ({
+    ...place,
+    confidence_level: Array.isArray(food_details)
+      ? food_details[0]?.confidence_level
+      : food_details?.confidence_level,
+  })) as Place[];
 }
 
 export async function getNearbyPlaces(
@@ -100,7 +108,24 @@ export async function getNearbyPlaces(
     throw new Error(error.message);
   }
 
-  return (data ?? []) as Place[];
+  const places = (data ?? []) as Place[];
+  if (places.length === 0) return places;
+
+  const { data: confidenceRows, error: confidenceError } = await supabase
+    .from('food_details')
+    .select('place_id, confidence_level')
+    .in('place_id', places.map((place) => place.id));
+
+  if (confidenceError) throw new Error(confidenceError.message);
+
+  const confidenceByPlace = new Map(
+    (confidenceRows ?? []).map((row) => [row.place_id, row.confidence_level])
+  );
+
+  return places.map((place) => ({
+    ...place,
+    confidence_level: confidenceByPlace.get(place.id) as Place['confidence_level'],
+  }));
 }
 
 export async function getFoodDetails(

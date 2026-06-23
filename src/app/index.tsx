@@ -1,10 +1,12 @@
 import * as Location from 'expo-location';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ActiveFoodFilters } from '@/components/home/ActiveFoodFilters';
 import { CategoryChips, type FoodCategoryChip } from '@/components/home/CategoryChips';
 import { FloatingActionButtons } from '@/components/home/FloatingActionButtons';
+import { FoodFilterSheet } from '@/components/home/FoodFilterSheet';
 import { FoodMap } from '@/components/home/FoodMap';
 import { HomeSearchBar } from '@/components/home/HomeSearchBar';
 import { MapResults, type HomeResult } from '@/components/home/MapResults';
@@ -12,9 +14,16 @@ import { ModeBar } from '@/components/home/ModeBar';
 import { RestaurantDetailSheet } from '@/components/home/RestaurantDetailSheet';
 import { SavedRestaurantsSheet } from '@/components/home/SavedRestaurantsSheet';
 import { UnderConstructionCard } from '@/components/home/UnderConstructionCard';
-import { getModeConfig, type MactMode } from '@/components/home/mactModes';
+import {
+  EMPTY_FOOD_FILTERS,
+  type FoodFilterId,
+  type FoodFilterState,
+  getActiveFoodFilters,
+} from '@/components/home/foodFilters';
+import { getModeConfig, MACT_MODES, type MactMode } from '@/components/home/mactModes';
+import { useFoodPlaces } from '@/hooks/useFoodPlaces';
 import { getSavedPlaceIds, toggleSavedPlace } from '@/lib/favourites';
-import { getNearbyPlaces, getPlacesByMode, type Place } from '@/services/placesService';
+import { getNearbyPlaces, type Place } from '@/services/placesService';
 
 const NEARBY_RADIUS_METERS = 10000;
 const REQUEST_TIMEOUT_MS = 8000;
@@ -23,9 +32,8 @@ export default function HomeScreen() {
   const [selectedMode, setSelectedMode] = useState<MactMode>('food');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<FoodCategoryChip>('All');
-  const [results, setResults] = useState<HomeResult[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [foodFilters, setFoodFilters] = useState<FoodFilterState>(EMPTY_FOOD_FILTERS);
+  const [nearbyPlaces, setNearbyPlaces] = useState<Place[]>([]);
   const [nearMeMessage, setNearMeMessage] = useState<string | null>(null);
   const [isNearMeActive, setIsNearMeActive] = useState(false);
   const [isBrowsingNearArea, setIsBrowsingNearArea] = useState(false);
@@ -34,37 +42,20 @@ export default function HomeScreen() {
   const [selectedFoodPlace, setSelectedFoodPlace] = useState<Place | null>(null);
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [isSavedSheetOpen, setIsSavedSheetOpen] = useState(false);
+  const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
   const [savedPlaceIds, setSavedPlaceIds] = useState<string[]>([]);
+  const [modeProgress] = useState(() => new Animated.Value(getModePosition('food')));
+  const {
+    errorMessage: foodErrorMessage,
+    hasCachedData: hasCachedFoodData,
+    isInitialLoading: isFoodInitialLoading,
+    isRefreshing: isFoodRefreshing,
+    places: foodPlaces,
+    refreshFoodPlaces,
+  } = useFoodPlaces();
   const insets = useSafeAreaInsets();
   const mode = useMemo(() => getModeConfig(selectedMode), [selectedMode]);
   const foodMode = useMemo(() => getModeConfig('food'), []);
-
-  const loadResults = useCallback(async () => {
-    if (selectedMode !== 'food') {
-      setIsLoading(false);
-      return;
-    }
-
-    try {
-      setIsLoading(true);
-      setErrorMessage(null);
-      setNearMeMessage(null);
-      setIsNearMeActive(false);
-      setIsBrowsingNearArea(false);
-      setUserLocation(null);
-      const places = await withTimeout(getPlacesByMode('food'));
-      setResults(places.map((item) => ({ kind: 'place', item })));
-    } catch {
-      setResults([]);
-      setErrorMessage('Could not load halal food places.');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [selectedMode]);
-
-  useEffect(() => {
-    void Promise.resolve().then(loadResults);
-  }, [loadResults]);
 
   const refreshSavedPlaceIds = useCallback(async () => {
     setSavedPlaceIds(await getSavedPlaceIds());
@@ -75,34 +66,45 @@ export default function HomeScreen() {
   }, [refreshSavedPlaceIds]);
 
   const restoreNormalFoodResults = useCallback(async () => {
-    try {
-      const places = await withTimeout(getPlacesByMode('food'));
-      setResults(places.map((item) => ({ kind: 'place', item })));
-      setErrorMessage(null);
-    } catch {
-      setResults([]);
-      setErrorMessage('Could not load halal food places.');
-    }
-  }, []);
+    setNearbyPlaces([]);
+    if (foodPlaces.length === 0) await refreshFoodPlaces();
+  }, [foodPlaces.length, refreshFoodPlaces]);
 
   const handleClearNearMe = useCallback(async () => {
     setNearMeMessage(null);
     setIsNearMeActive(false);
     setIsBrowsingNearArea(false);
+    setNearbyPlaces([]);
     setUserLocation(null);
     await restoreNormalFoodResults();
   }, [restoreNormalFoodResults]);
 
   const handleSelectMode = useCallback((nextMode: MactMode) => {
+    if (nextMode === selectedMode) return;
+
+    const nextPosition = getModePosition(nextMode);
+
+    Animated.timing(modeProgress, {
+      toValue: nextPosition,
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+
     setSelectedMode(nextMode);
     setSelectedFoodPlace(null);
     setNearMeMessage(null);
     setIsNearMeActive(false);
     setIsBrowsingNearArea(false);
+    setNearbyPlaces([]);
     setUserLocation(null);
     setIsMapExpanded(false);
-    if (nextMode !== 'food') setSelectedCategory('All');
-  }, []);
+    setIsFilterSheetOpen(false);
+    if (nextMode !== 'food') {
+      setSelectedCategory('All');
+      setFoodFilters(EMPTY_FOOD_FILTERS);
+    }
+  }, [modeProgress, selectedMode]);
 
   const handlePressFoodPlace = useCallback((place: Place) => {
     setSelectedFoodPlace(place);
@@ -115,6 +117,7 @@ export default function HomeScreen() {
     if (isNearMeActive) {
       setIsNearMeActive(false);
       setIsBrowsingNearArea(false);
+      setNearbyPlaces([]);
       setUserLocation(null);
       await restoreNormalFoodResults();
     }
@@ -159,8 +162,7 @@ export default function HomeScreen() {
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
       });
-      setResults(sortedPlaces.map((item) => ({ kind: 'place', item })));
-      setErrorMessage(null);
+      setNearbyPlaces(sortedPlaces);
       setIsNearMeActive(true);
       setIsBrowsingNearArea(false);
     } catch {
@@ -186,9 +188,33 @@ export default function HomeScreen() {
     });
   }, []);
 
+  const handleToggleFoodFilter = useCallback((filterId: FoodFilterId) => {
+    setFoodFilters((current) => ({
+      ...current,
+      [filterId]: !current[filterId],
+    }));
+  }, []);
+
+  const handleRemoveFoodFilter = useCallback((filterId: FoodFilterId) => {
+    setFoodFilters((current) => ({
+      ...current,
+      [filterId]: false,
+    }));
+  }, []);
+
+  const handleClearFoodFilters = useCallback(() => {
+    setFoodFilters(EMPTY_FOOD_FILTERS);
+  }, []);
+
+  const results = useMemo<HomeResult[]>(
+    () => (isNearMeActive ? nearbyPlaces : foodPlaces).map((item) => ({ kind: 'place', item })),
+    [foodPlaces, isNearMeActive, nearbyPlaces]
+  );
+
   const filteredResults = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     const selectedCategoryQuery = selectedCategory === 'All' ? '' : selectedCategory.toLowerCase();
+    const savedPlaceIdSet = new Set(savedPlaceIds);
 
     return results.filter((result) => {
       if (result.kind !== 'place') return false;
@@ -202,16 +228,31 @@ export default function HomeScreen() {
         .join(' ')
         .toLowerCase()
         .includes(query);
+      const matchesFilters = matchesFoodFilters(result.item, foodFilters, savedPlaceIdSet);
 
-      return matchesCategory && matchesQuery;
+      return matchesCategory && matchesQuery && matchesFilters;
     });
-  }, [results, searchQuery, selectedCategory]);
+  }, [foodFilters, results, savedPlaceIds, searchQuery, selectedCategory]);
 
   const constructionCopy = getConstructionCopy(selectedMode);
+  const activeFoodFilters = getActiveFoodFilters(foodFilters);
+  const activeFilterCount = activeFoodFilters.filter((filter) => filter.id !== 'savedOnly').length;
+  const hasActiveFoodFilters = activeFoodFilters.length > 0;
+  const foodDataErrorMessage = foodErrorMessage && !hasCachedFoodData ? foodErrorMessage : null;
+  const foodDataStatusMessage =
+    !isNearMeActive && foodErrorMessage && hasCachedFoodData
+      ? 'Showing cached halal food. Refresh failed.'
+      : !isNearMeActive && isFoodRefreshing && hasCachedFoodData
+        ? 'Refreshing halal food...'
+        : null;
   const bottomPadding = insets.bottom + 8;
+  const screenBackgroundColor = modeProgress.interpolate({
+    inputRange: [0, 1, 2],
+    outputRange: ['#F4F7FF', '#FBF7F1', '#F4FBF5'],
+  });
 
   return (
-    <View style={styles.screen}>
+    <Animated.View style={[styles.screen, { backgroundColor: screenBackgroundColor }]}>
       <View
         style={[
           styles.content,
@@ -223,31 +264,38 @@ export default function HomeScreen() {
           },
         ]}
       >
-        {selectedMode !== 'food' || !isMapExpanded ? <View style={styles.header}>
-          <View style={styles.brandRow}>
-            <Text style={[styles.brand, { color: mode.color }]}>MACT</Text>
-            <Text numberOfLines={1} style={styles.title}>
-              {selectedMode === 'food' ? 'Halal food in Canberra' : mode.title}
-            </Text>
-          </View>
-          {selectedMode === 'food' ? (
-            <>
-              <HomeSearchBar
-                accentColor={mode.color}
-                onChangeText={setSearchQuery}
-                value={searchQuery}
-              />
-              <CategoryChips
-                accentColor={mode.color}
-                onSelectCategory={setSelectedCategory}
-                selectedCategory={selectedCategory}
-              />
-            </>
-          ) : null}
-        </View> : null}
+        <View style={styles.body}>
+          {selectedMode !== 'food' || !isMapExpanded ? <View style={styles.header}>
+            <View style={styles.brandRow}>
+              <Text style={[styles.brand, { color: mode.color }]}>MACT</Text>
+              <Text numberOfLines={1} style={styles.title}>
+                {selectedMode === 'food' ? 'Halal food in Canberra' : mode.title}
+              </Text>
+            </View>
+            {selectedMode === 'food' ? (
+              <>
+                <HomeSearchBar
+                  accentColor={mode.color}
+                  onChangeText={setSearchQuery}
+                  value={searchQuery}
+                />
+                <CategoryChips
+                  accentColor={mode.color}
+                  onSelectCategory={setSelectedCategory}
+                  selectedCategory={selectedCategory}
+                />
+                <ActiveFoodFilters
+                  accentColor={mode.color}
+                  filters={foodFilters}
+                  onClearAll={handleClearFoodFilters}
+                  onRemoveFilter={handleRemoveFoodFilter}
+                />
+              </>
+            ) : null}
+          </View> : null}
 
-        {selectedMode === 'food' ? (
-          <View style={styles.discovery}>
+          {selectedMode === 'food' ? (
+            <View style={styles.discovery}>
             <FoodMap
               accentColor={mode.color}
               isExpanded={isMapExpanded}
@@ -264,14 +312,14 @@ export default function HomeScreen() {
               selectedPlace={selectedFoodPlace}
               userLocation={userLocation}
             >
-              {isNearMeActive || nearMeMessage ? (
+              {isNearMeActive || nearMeMessage || foodDataStatusMessage ? (
                 <View style={styles.notice}>
                   <Text style={styles.noticeText}>
                     {isNearMeActive
                       ? isBrowsingNearArea
                         ? 'Browsing map near your area'
                         : 'Halal food within 10 km'
-                      : nearMeMessage}
+                      : nearMeMessage ?? foodDataStatusMessage}
                   </Text>
                   {isNearMeActive ? (
                     <Pressable
@@ -288,14 +336,16 @@ export default function HomeScreen() {
                 accentColor={mode.color}
                 emptyMessage={
                   searchQuery || selectedCategory !== 'All'
-                    ? 'Try another restaurant, cuisine, suburb, or category.'
+                    ? 'Try another restaurant, cuisine, suburb, category, or filter.'
+                    : hasActiveFoodFilters
+                      ? 'No restaurants match those food filters yet.'
                     : 'No halal restaurants are available yet.'
                 }
-                errorMessage={errorMessage}
+                errorMessage={foodDataErrorMessage}
                 isCollapsedPreview={isMapExpanded}
-                isLoading={isLoading}
+                isLoading={isFoodInitialLoading}
                 onPressFoodPlace={handlePressFoodPlace}
-                onRetry={loadResults}
+                onRetry={refreshFoodPlaces}
                 onToggleSavedPlace={handleToggleSavedPlace}
                 results={filteredResults}
                 savedPlaceIds={savedPlaceIds}
@@ -303,14 +353,14 @@ export default function HomeScreen() {
               />
             </FoodMap>
 
-            {isMapExpanded && (isNearMeActive || nearMeMessage) ? (
+            {isMapExpanded && (isNearMeActive || nearMeMessage || foodDataStatusMessage) ? (
               <View style={styles.fullscreenNotice}>
                 <Text style={styles.noticeText}>
                   {isNearMeActive
                     ? isBrowsingNearArea
                       ? 'Browsing map near your area'
                       : 'Halal food within 10 km'
-                    : nearMeMessage}
+                    : nearMeMessage ?? foodDataStatusMessage}
                 </Text>
                 {isNearMeActive ? (
                   <Pressable
@@ -326,25 +376,37 @@ export default function HomeScreen() {
 
             {!selectedFoodPlace ? (
               <FloatingActionButtons
+                activeFilterCount={activeFilterCount}
                 accentColor={mode.color}
                 isNearMeActive={isNearMeActive}
                 isNearMeLoading={isNearMeLoading}
+                onPressFilter={() => setIsFilterSheetOpen(true)}
                 onPressNearMe={handlePressNearMe}
                 onPressSaved={() => setIsSavedSheetOpen(true)}
               />
             ) : null}
-          </View>
-        ) : constructionCopy ? (
-          <View style={styles.construction}>
-            <UnderConstructionCard
+
+            <FoodFilterSheet
               accentColor={mode.color}
-              body={constructionCopy.body}
-              footer={constructionCopy.footer}
-              icon={constructionCopy.icon}
-              title={constructionCopy.title}
+              filters={foodFilters}
+              isVisible={isFilterSheetOpen}
+              onClearAll={handleClearFoodFilters}
+              onClose={() => setIsFilterSheetOpen(false)}
+              onToggleFilter={handleToggleFoodFilter}
             />
-          </View>
-        ) : null}
+            </View>
+          ) : constructionCopy ? (
+            <View style={styles.construction}>
+              <UnderConstructionCard
+                accentColor={mode.color}
+                body={constructionCopy.body}
+                footer={constructionCopy.footer}
+                icon={constructionCopy.icon}
+                title={constructionCopy.title}
+              />
+            </View>
+          ) : null}
+        </View>
 
         <ModeBar onSelectMode={handleSelectMode} selectedMode={selectedMode} />
       </View>
@@ -362,11 +424,13 @@ export default function HomeScreen() {
       />
       <SavedRestaurantsSheet
         accentColor={foodMode.color}
+        isLoadingPlaces={isFoodInitialLoading}
         isVisible={isSavedSheetOpen}
         onClose={() => setIsSavedSheetOpen(false)}
         onSelectPlace={handleSelectSavedRestaurant}
+        places={foodPlaces}
       />
-    </View>
+    </Animated.View>
   );
 }
 
@@ -384,6 +448,29 @@ function withTimeout<T>(promise: Promise<T>): Promise<T> {
       }
     );
   });
+}
+
+function matchesFoodFilters(
+  place: Place,
+  filters: FoodFilterState,
+  savedPlaceIdSet: Set<string>
+) {
+  const details = place.food_details;
+
+  if (filters.savedOnly && !savedPlaceIdSet.has(place.id)) return false;
+  if (filters.halalCertified && details?.halal_certified !== true) return false;
+  if (filters.handSlaughtered && details?.hand_slaughtered !== 'yes') return false;
+  if (filters.noPork && details?.pork_status !== 'none_served') return false;
+  if (filters.noAlcohol && details?.alcohol_status !== 'none_served') return false;
+  if (filters.noCrossContaminationRisk && details?.cross_contamination_risk !== 'no') return false;
+  if (filters.highConfidence && details?.confidence_level !== 'high') return false;
+  if (filters.chickenAndBeefConfirmed && details?.halal_meat_coverage !== 'both') return false;
+
+  return true;
+}
+
+function getModePosition(mode: MactMode) {
+  return Math.max(0, MACT_MODES.findIndex((item) => item.id === mode));
 }
 
 function getConstructionCopy(mode: MactMode) {
@@ -407,8 +494,9 @@ function getConstructionCopy(mode: MactMode) {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#FBF7F1' },
+  screen: { flex: 1 },
   content: { flex: 1, gap: 10 },
+  body: { flex: 1, gap: 10, minHeight: 0 },
   header: { gap: 7 },
   brandRow: { flexDirection: 'row', alignItems: 'baseline', gap: 10 },
   brand: { fontSize: 18, fontWeight: '900', letterSpacing: 0.5 },

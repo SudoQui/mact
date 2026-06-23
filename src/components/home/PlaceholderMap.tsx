@@ -153,6 +153,7 @@ export function PlaceholderMap({
 
   return (
     <View style={styles.container}>
+      {/* TODO: Add a safer fullscreen transition after the fallback map layout is stable. */}
       <View
         style={styles.mapArea}
         onLayout={(event) => setLayout(event.nativeEvent.layout)}>
@@ -244,7 +245,11 @@ export function PlaceholderMap({
         </View>
       </View>
 
-      {!isExpanded ? <View style={styles.childContainer}>{children}</View> : null}
+      {!isExpanded ? (
+        <View style={styles.childContainer}>
+          {children}
+        </View>
+      ) : null}
     </View>
   );
 }

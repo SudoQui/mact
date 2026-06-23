@@ -1,6 +1,6 @@
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { SymbolIconButton } from '@/components/home/SymbolIconButton';
+import { BookmarkButton } from '@/components/home/BookmarkIconButton';
 import { formatDistance } from '@/lib/distance';
 import type { CommunityEvent } from '@/services/eventsService';
 import type { Place } from '@/services/placesService';
@@ -155,9 +155,10 @@ function PlaceCard({
   onToggleSavedPlace,
   place,
 }: PlaceCardProps) {
-  const detail = [place.cuisine ?? place.category, place.suburb].filter(Boolean).join(' · ');
+  const detail = [place.cuisine ?? place.category, place.suburb].filter(Boolean).join(' - ');
   const distance = formatDistance(place.distance_meters);
   const confidence = formatConfidence(place.confidence_level);
+  const tags = getPlaceTags(place);
   const card = (
     <>
       <View style={styles.cardHeader}>
@@ -165,22 +166,13 @@ function PlaceCard({
           <Text style={styles.cardTitle}>{place.name}</Text>
           {distance ? <Text style={[styles.distance, { color: accentColor }]}>{distance}</Text> : null}
         </View>
-        <SymbolIconButton
-          accessibilityLabel={isSaved ? 'Unsave restaurant' : 'Save restaurant'}
-          backgroundColor={isSaved ? `${accentColor}12` : '#F7F4EF'}
-          color={isSaved ? accentColor : '#4F5652'}
-          fallback={isSaved ? '★' : '☆'}
-          name={
-            isSaved
-              ? { ios: 'bookmark.fill', android: 'bookmark', web: 'bookmark' }
-              : { ios: 'bookmark', android: 'bookmark_border', web: 'bookmark_border' }
-          }
+        <BookmarkButton
+          accentColor={accentColor}
+          isSaved={isSaved}
           onPress={(event) => {
             event.stopPropagation();
             onToggleSavedPlace(place.id);
           }}
-          selected={isSaved}
-          size={20}
           style={styles.bookmarkButton}
         />
       </View>
@@ -192,6 +184,11 @@ function PlaceCard({
         <View style={[styles.confidenceChip, { backgroundColor: `${accentColor}12` }]}>
           <Text style={[styles.confidenceText, { color: accentColor }]}>{confidence}</Text>
         </View>
+        {tags.map((tag) => (
+          <View key={tag} style={styles.infoTag}>
+            <Text style={styles.infoTagText}>{tag}</Text>
+          </View>
+        ))}
       </View>
     </>
   );
@@ -219,6 +216,18 @@ function PlaceCard({
 function formatConfidence(value: Place['confidence_level']) {
   if (!value) return 'Needs review';
   return `${value.charAt(0).toUpperCase()}${value.slice(1)} confidence`;
+}
+
+function getPlaceTags(place: Place) {
+  const details = place.food_details;
+  if (!details) return [];
+
+  return [
+    details.halal_certified ? 'Certified' : null,
+    details.pork_status === 'none_served' ? 'No pork' : null,
+    details.alcohol_status === 'none_served' ? 'No alcohol' : null,
+    details.confidence_level === 'high' ? 'High confidence' : null,
+  ].filter((tag): tag is string => Boolean(tag));
 }
 
 type EventCardProps = {
@@ -335,6 +344,8 @@ const styles = StyleSheet.create({
   },
   statusRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
     marginTop: 3,
   },
   confidenceChip: {
@@ -343,6 +354,17 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   confidenceText: {
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  infoTag: {
+    borderRadius: 999,
+    backgroundColor: '#F4F1EB',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  infoTagText: {
+    color: '#4E5651',
     fontSize: 11,
     fontWeight: '900',
   },

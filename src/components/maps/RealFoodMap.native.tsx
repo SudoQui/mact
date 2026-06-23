@@ -173,6 +173,7 @@ export function RealFoodMap({
 
   return (
     <View style={styles.container}>
+      {/* TODO: Add a safer fullscreen transition after native map layout is stable across devices. */}
       <View
         style={[
           styles.mapWrapper,
@@ -277,7 +278,11 @@ export function RealFoodMap({
         </View>
       </View>
 
-      {!isExpanded ? <View style={styles.children}>{children}</View> : null}
+      {!isExpanded ? (
+        <View style={styles.children}>
+          {children}
+        </View>
+      ) : null}
     </View>
   );
 }

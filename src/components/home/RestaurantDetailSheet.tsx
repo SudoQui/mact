@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  Easing,
   Linking,
   PanResponder,
   Pressable,
@@ -12,7 +13,7 @@ import {
   View,
 } from 'react-native';
 
-import { SymbolIconButton } from '@/components/home/SymbolIconButton';
+import { BookmarkButton } from '@/components/home/BookmarkIconButton';
 import { formatDistance } from '@/lib/distance';
 import { getFoodDetails, type FoodDetails, type Place } from '@/services/placesService';
 
@@ -41,20 +42,22 @@ export function RestaurantDetailSheet({
   const [isSaving, setIsSaving] = useState(false);
   const { height: screenHeight } = useWindowDimensions();
   const sheetHeight = Math.round(screenHeight * 0.52);
-  const [translateY] = useState(() => new Animated.Value(0));
+  const [translateY] = useState(() => new Animated.Value(sheetHeight));
 
   const resetSheetPosition = useCallback(() => {
     Animated.spring(translateY, {
       toValue: 0,
       useNativeDriver: true,
-      bounciness: 0,
+      speed: 18,
+      bounciness: 2,
     }).start();
   }, [translateY]);
 
   const dismissSheet = useCallback(() => {
     Animated.timing(translateY, {
       toValue: sheetHeight,
-      duration: 180,
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start(({ finished }) => {
       if (finished) onClose();
@@ -83,6 +86,13 @@ export function RestaurantDetailSheet({
 
   const loadDetails = useCallback(async () => {
     if (!place) return;
+
+    if (place.food_details) {
+      setDetails(place.food_details);
+      setErrorMessage(null);
+      setIsLoading(false);
+      return;
+    }
 
     try {
       setIsLoading(true);
@@ -116,13 +126,21 @@ export function RestaurantDetailSheet({
   }, [loadDetails, place]);
 
   useEffect(() => {
-    translateY.setValue(0);
-  }, [place?.id, translateY]);
+    if (!place) return;
+
+    translateY.setValue(sheetHeight);
+    Animated.timing(translateY, {
+      toValue: 0,
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [place, sheetHeight, translateY]);
 
   if (!place) return null;
 
   const distance = formatDistance(place.distance_meters);
-  const meta = [place.cuisine ?? place.category, place.suburb].filter(Boolean).join(' · ');
+  const meta = [place.cuisine ?? place.category, place.suburb].filter(Boolean).join(' - ');
 
   return (
     <Animated.View
@@ -136,20 +154,11 @@ export function RestaurantDetailSheet({
         <View style={styles.titleBlock}>
           <View style={styles.titleRow}>
             <Text numberOfLines={2} style={styles.title}>{place.name}</Text>
-            <SymbolIconButton
-              accessibilityLabel={isSaved ? 'Unsave restaurant' : 'Save restaurant'}
-              backgroundColor={isSaved ? `${accentColor}12` : '#F0ECE6'}
-              color={isSaved ? accentColor : '#303531'}
+            <BookmarkButton
+              accentColor={accentColor}
               disabled={isSaving}
-              fallback={isSaved ? '★' : '☆'}
-              name={
-                isSaved
-                  ? { ios: 'bookmark.fill', android: 'bookmark', web: 'bookmark' }
-                  : { ios: 'bookmark', android: 'bookmark_border', web: 'bookmark_border' }
-              }
+              isSaved={isSaved}
               onPress={handleToggleSaved}
-              selected={isSaved}
-              size={21}
             />
           </View>
           {meta ? <Text style={styles.meta}>{meta}</Text> : null}
@@ -161,10 +170,10 @@ export function RestaurantDetailSheet({
           accessibilityLabel="Close restaurant details"
           accessibilityRole="button"
           hitSlop={8}
-          onPress={onClose}
+          onPress={dismissSheet}
           style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
         >
-          <Text style={styles.closeLabel}>×</Text>
+          <Text style={styles.closeLabel}>X</Text>
         </Pressable>
       </View>
 
@@ -367,7 +376,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  closeLabel: { color: '#303531', fontSize: 28, fontWeight: '500', lineHeight: 30 },
+  closeLabel: { color: '#303531', fontSize: 15, fontWeight: '900' },
   actions: { flexDirection: 'row', gap: 8, marginTop: 10 },
   actionButton: {
     flex: 1,

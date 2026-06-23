@@ -18,6 +18,7 @@ export type Place = {
   opening_hours: Record<string, unknown>;
   distance_meters?: number;
   confidence_level?: FoodDetails['confidence_level'];
+  food_details?: FoodDetails | null;
 };
 
 export type FoodDetails = {
@@ -30,7 +31,7 @@ export type FoodDetails = {
   hand_slaughtered: 'yes' | 'no' | 'unknown';
   pork_status: 'none_served' | 'served' | 'unknown' | null;
   alcohol_status: 'none_served' | 'served' | 'unknown' | null;
-  cross_contamination_risk: 'low' | 'medium' | 'high' | 'unknown';
+  cross_contamination_risk: 'no' | 'low' | 'medium' | 'high' | 'unknown';
   verification_source:
     | 'admin'
     | 'owner'
@@ -72,7 +73,7 @@ export async function getPlacesByMode(mode: AppMode): Promise<Place[]> {
       latitude,
       longitude,
       opening_hours,
-      food_details(confidence_level)
+      food_details(*)
     `
     )
     .eq('mode', mode)
@@ -83,12 +84,15 @@ export async function getPlacesByMode(mode: AppMode): Promise<Place[]> {
     throw new Error(error.message);
   }
 
-  return (data ?? []).map(({ food_details, ...place }) => ({
-    ...place,
-    confidence_level: Array.isArray(food_details)
-      ? food_details[0]?.confidence_level
-      : food_details?.confidence_level,
-  })) as Place[];
+  return (data ?? []).map(({ food_details, ...place }) => {
+    const details = Array.isArray(food_details) ? food_details[0] : food_details;
+
+    return {
+      ...place,
+      confidence_level: details?.confidence_level,
+      food_details: details ?? null,
+    };
+  }) as Place[];
 }
 
 export async function getNearbyPlaces(
@@ -111,21 +115,34 @@ export async function getNearbyPlaces(
   const places = (data ?? []) as Place[];
   if (places.length === 0) return places;
 
-  const { data: confidenceRows, error: confidenceError } = await supabase
+  const { data: detailsRows, error: detailsError } = await supabase
     .from('food_details')
-    .select('place_id, confidence_level')
+    .select(
+      `
+      *
+    `
+    )
     .in('place_id', places.map((place) => place.id));
 
-  if (confidenceError) throw new Error(confidenceError.message);
+  if (detailsError) throw new Error(detailsError.message);
 
-  const confidenceByPlace = new Map(
-    (confidenceRows ?? []).map((row) => [row.place_id, row.confidence_level])
+  const detailsByPlace = new Map(
+    (detailsRows ?? []).map((row) => {
+      const { place_id, ...details } = row;
+
+      return [place_id, details];
+    })
   );
 
-  return places.map((place) => ({
-    ...place,
-    confidence_level: confidenceByPlace.get(place.id) as Place['confidence_level'],
-  }));
+  return places.map((place) => {
+    const details = detailsByPlace.get(place.id) as FoodDetails | undefined;
+
+    return {
+      ...place,
+      confidence_level: details?.confidence_level,
+      food_details: details ?? null,
+    };
+  });
 }
 
 export async function getFoodDetails(

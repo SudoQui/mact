@@ -12,7 +12,7 @@ export const MACT_MODES: ModeConfig[] = [
     id: 'prayer',
     label: 'Prayer',
     title: 'Prayer spaces nearby',
-    color: '#1C7C66',
+    color: '#4B64C8',
   },
   {
     id: 'food',
@@ -24,7 +24,7 @@ export const MACT_MODES: ModeConfig[] = [
     id: 'community',
     label: 'Community',
     title: 'Community support nearby',
-    color: '#4B64C8',
+    color: '#1C7C66',
   },
 ];
 

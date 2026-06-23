@@ -9,20 +9,24 @@ import {
 } from 'react-native';
 
 import { getSavedPlaceIds } from '@/lib/favourites';
-import { getPlacesByMode, type Place } from '@/services/placesService';
+import type { Place } from '@/services/placesService';
 
 type SavedRestaurantsSheetProps = {
   accentColor: string;
   isVisible: boolean;
+  isLoadingPlaces?: boolean;
   onClose: () => void;
   onSelectPlace: (place: Place) => void;
+  places: Place[];
 };
 
 export function SavedRestaurantsSheet({
   accentColor,
   isVisible,
+  isLoadingPlaces = false,
   onClose,
   onSelectPlace,
+  places,
 }: SavedRestaurantsSheetProps) {
   const [savedPlaces, setSavedPlaces] = useState<Place[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -33,13 +37,10 @@ export function SavedRestaurantsSheet({
       setIsLoading(true);
       setErrorMessage(null);
 
-      const [savedPlaceIds, foodPlaces] = await Promise.all([
-        getSavedPlaceIds(),
-        getPlacesByMode('food'),
-      ]);
+      const savedPlaceIds = await getSavedPlaceIds();
       const savedPlaceIdSet = new Set(savedPlaceIds);
 
-      setSavedPlaces(foodPlaces.filter((place) => savedPlaceIdSet.has(place.id)));
+      setSavedPlaces(places.filter((place) => savedPlaceIdSet.has(place.id)));
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'Something went wrong loading saved restaurants.';
@@ -49,7 +50,7 @@ export function SavedRestaurantsSheet({
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [places]);
 
   useEffect(() => {
     if (isVisible) {
@@ -60,6 +61,8 @@ export function SavedRestaurantsSheet({
   if (!isVisible) {
     return null;
   }
+
+  const isSheetLoading = isLoading || isLoadingPlaces;
 
   return (
     <View style={styles.overlay}>
@@ -82,14 +85,14 @@ export function SavedRestaurantsSheet({
           </Pressable>
         </View>
 
-        {isLoading ? (
+        {isSheetLoading ? (
           <View style={styles.stateContainer}>
             <ActivityIndicator color={accentColor} size="large" />
             <Text style={styles.stateText}>Loading saved restaurants...</Text>
           </View>
         ) : null}
 
-        {!isLoading && errorMessage ? (
+        {!isSheetLoading && errorMessage ? (
           <View style={styles.stateContainer}>
             <Text style={styles.errorTitle}>Unable to load saved restaurants</Text>
             <Text style={styles.stateText}>{errorMessage}</Text>
@@ -106,7 +109,7 @@ export function SavedRestaurantsSheet({
           </View>
         ) : null}
 
-        {!isLoading && !errorMessage && savedPlaces.length === 0 ? (
+        {!isSheetLoading && !errorMessage && savedPlaces.length === 0 ? (
           <View style={styles.stateContainer}>
             <Text style={styles.emptyIcon}>☆</Text>
             <Text style={styles.emptyTitle}>No saved restaurants yet</Text>
@@ -116,7 +119,7 @@ export function SavedRestaurantsSheet({
           </View>
         ) : null}
 
-        {!isLoading && !errorMessage && savedPlaces.length > 0 ? (
+        {!isSheetLoading && !errorMessage && savedPlaces.length > 0 ? (
           <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
             {savedPlaces.map((place) => (
               <Pressable

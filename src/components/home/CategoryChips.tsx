@@ -1,4 +1,6 @@
-import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
+import { ScrollView, StyleSheet } from 'react-native';
+
+import { AnimatedToggleChip } from '@/components/home/AnimatedToggleChip';
 
 export const FOOD_CATEGORY_CHIPS = ['All', 'Restaurant', 'Cafe', 'Butcher', 'Grocery', 'Dessert'] as const;
 
@@ -25,23 +27,13 @@ export function CategoryChips({
         const isSelected = selectedCategory === category;
 
         return (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ selected: isSelected }}
+          <AnimatedToggleChip
+            accentColor={accentColor}
             key={category}
+            label={category}
             onPress={() => onSelectCategory(category)}
-            style={({ pressed }) => [
-              styles.chip,
-              isSelected
-                ? { backgroundColor: accentColor, borderColor: accentColor }
-                : styles.inactiveChip,
-              pressed && styles.pressed,
-            ]}
-          >
-            <Text style={[styles.label, isSelected ? styles.selectedLabel : styles.inactiveLabel]}>
-              {category}
-            </Text>
-          </Pressable>
+            selected={isSelected}
+          />
         );
       })}
     </ScrollView>
@@ -52,30 +44,5 @@ const styles = StyleSheet.create({
   content: {
     gap: 7,
     paddingRight: 2,
-  },
-  chip: {
-    minHeight: 32,
-    borderRadius: 16,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-  },
-  inactiveChip: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E8DED3',
-  },
-  label: {
-    fontSize: 12,
-    fontWeight: '900',
-  },
-  inactiveLabel: {
-    color: '#4E5651',
-  },
-  selectedLabel: {
-    color: '#FFFFFF',
-  },
-  pressed: {
-    opacity: 0.72,
   },
 });

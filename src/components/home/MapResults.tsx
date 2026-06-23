@@ -1,5 +1,6 @@
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { SymbolIconButton } from '@/components/home/SymbolIconButton';
 import { formatDistance } from '@/lib/distance';
 import type { CommunityEvent } from '@/services/eventsService';
 import type { Place } from '@/services/placesService';
@@ -21,7 +22,9 @@ type MapResultsProps = {
   isLoading: boolean;
   onPressFoodPlace: (place: Place) => void;
   onRetry: () => void;
+  onToggleSavedPlace: (placeId: string) => void;
   results: HomeResult[];
+  savedPlaceIds: string[];
   selectedPlaceId?: string | null;
   isCollapsedPreview?: boolean;
 };
@@ -33,7 +36,9 @@ export function MapResults({
   isLoading,
   onPressFoodPlace,
   onRetry,
+  onToggleSavedPlace,
   results,
+  savedPlaceIds,
   selectedPlaceId,
   isCollapsedPreview = false,
 }: MapResultsProps) {
@@ -58,7 +63,8 @@ export function MapResults({
             styles.retryButton,
             { backgroundColor: accentColor },
             pressed && styles.pressed,
-          ]}>
+          ]}
+        >
           <Text style={styles.retryLabel}>Retry</Text>
         </Pressable>
       </View>
@@ -77,19 +83,23 @@ export function MapResults({
   return (
     <View style={styles.resultsContainer}>
       <View style={styles.listHeader}>
-        <Text style={styles.listTitle}>{results.length} halal {results.length === 1 ? 'place' : 'places'}</Text>
+        <Text style={styles.listTitle}>
+          {results.length} halal {results.length === 1 ? 'place' : 'places'}
+        </Text>
         {isCollapsedPreview ? <Text style={styles.previewHint}>Map view</Text> : null}
       </View>
       <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
-      {(isCollapsedPreview ? results.slice(0, 1) : results).map((result) => (
-        <ResultCard
-          accentColor={accentColor}
-          key={`${result.kind}-${result.item.id}`}
-          onPressFoodPlace={onPressFoodPlace}
-          result={result}
-          selectedPlaceId={selectedPlaceId}
-        />
-      ))}
+        {(isCollapsedPreview ? results.slice(0, 1) : results).map((result) => (
+          <ResultCard
+            accentColor={accentColor}
+            key={`${result.kind}-${result.item.id}`}
+            onPressFoodPlace={onPressFoodPlace}
+            onToggleSavedPlace={onToggleSavedPlace}
+            result={result}
+            savedPlaceIds={savedPlaceIds}
+            selectedPlaceId={selectedPlaceId}
+          />
+        ))}
       </ScrollView>
     </View>
   );
@@ -98,11 +108,20 @@ export function MapResults({
 type ResultCardProps = {
   accentColor: string;
   onPressFoodPlace: (place: Place) => void;
+  onToggleSavedPlace: (placeId: string) => void;
   result: HomeResult;
+  savedPlaceIds: string[];
   selectedPlaceId?: string | null;
 };
 
-function ResultCard({ accentColor, onPressFoodPlace, result, selectedPlaceId }: ResultCardProps) {
+function ResultCard({
+  accentColor,
+  onPressFoodPlace,
+  onToggleSavedPlace,
+  result,
+  savedPlaceIds,
+  selectedPlaceId,
+}: ResultCardProps) {
   if (result.kind === 'event') {
     return <EventCard accentColor={accentColor} event={result.item} />;
   }
@@ -110,8 +129,10 @@ function ResultCard({ accentColor, onPressFoodPlace, result, selectedPlaceId }: 
   return (
     <PlaceCard
       accentColor={accentColor}
+      isSaved={savedPlaceIds.includes(result.item.id)}
       isSelected={selectedPlaceId === result.item.id}
       onPressFoodPlace={onPressFoodPlace}
+      onToggleSavedPlace={onToggleSavedPlace}
       place={result.item}
     />
   );
@@ -119,20 +140,49 @@ function ResultCard({ accentColor, onPressFoodPlace, result, selectedPlaceId }: 
 
 type PlaceCardProps = {
   accentColor: string;
+  isSaved: boolean;
   onPressFoodPlace: (place: Place) => void;
+  onToggleSavedPlace: (placeId: string) => void;
   place: Place;
   isSelected: boolean;
 };
 
-function PlaceCard({ accentColor, isSelected, onPressFoodPlace, place }: PlaceCardProps) {
+function PlaceCard({
+  accentColor,
+  isSaved,
+  isSelected,
+  onPressFoodPlace,
+  onToggleSavedPlace,
+  place,
+}: PlaceCardProps) {
   const detail = [place.cuisine ?? place.category, place.suburb].filter(Boolean).join(' · ');
   const distance = formatDistance(place.distance_meters);
   const confidence = formatConfidence(place.confidence_level);
   const card = (
     <>
       <View style={styles.cardHeader}>
-        <Text style={styles.cardTitle}>{place.name}</Text>
-        {distance ? <Text style={[styles.distance, { color: accentColor }]}>{distance}</Text> : null}
+        <View style={styles.titleBlock}>
+          <Text style={styles.cardTitle}>{place.name}</Text>
+          {distance ? <Text style={[styles.distance, { color: accentColor }]}>{distance}</Text> : null}
+        </View>
+        <SymbolIconButton
+          accessibilityLabel={isSaved ? 'Unsave restaurant' : 'Save restaurant'}
+          backgroundColor={isSaved ? `${accentColor}12` : '#F7F4EF'}
+          color={isSaved ? accentColor : '#4F5652'}
+          fallback={isSaved ? '★' : '☆'}
+          name={
+            isSaved
+              ? { ios: 'bookmark.fill', android: 'bookmark', web: 'bookmark' }
+              : { ios: 'bookmark', android: 'bookmark_border', web: 'bookmark_border' }
+          }
+          onPress={(event) => {
+            event.stopPropagation();
+            onToggleSavedPlace(place.id);
+          }}
+          selected={isSaved}
+          size={20}
+          style={styles.bookmarkButton}
+        />
       </View>
       {detail ? <Text style={styles.meta}>{detail}</Text> : null}
       {place.description ? (
@@ -159,7 +209,8 @@ function PlaceCard({ accentColor, isSelected, onPressFoodPlace, place }: PlaceCa
         isSelected ? styles.selectedCard : null,
         isSelected ? { borderColor: accentColor } : null,
         pressed && styles.pressed,
-      ]}>
+      ]}
+    >
       {card}
     </Pressable>
   );
@@ -255,7 +306,6 @@ const styles = StyleSheet.create({
     borderWidth: 2,
   },
   cardTitle: {
-    flex: 1,
     color: '#151922',
     fontSize: 16,
     fontWeight: '900',
@@ -265,10 +315,18 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 10,
   },
+  titleBlock: {
+    flex: 1,
+    gap: 2,
+  },
   distance: {
     fontSize: 13,
     fontWeight: '900',
-    textAlign: 'right',
+  },
+  bookmarkButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
   },
   meta: {
     color: '#59606B',

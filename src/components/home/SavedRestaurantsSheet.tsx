@@ -111,7 +111,7 @@ export function SavedRestaurantsSheet({
             <Text style={styles.emptyIcon}>☆</Text>
             <Text style={styles.emptyTitle}>No saved restaurants yet</Text>
             <Text style={styles.stateText}>
-              Tap Save on a restaurant to keep it here for later.
+              Tap the bookmark on a restaurant to keep it here for later.
             </Text>
           </View>
         ) : null}

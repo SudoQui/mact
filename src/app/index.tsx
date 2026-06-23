@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { CategoryChips, type FoodCategoryChip } from '@/components/home/CategoryChips';
 import { FloatingActionButtons } from '@/components/home/FloatingActionButtons';
 import { FoodMap } from '@/components/home/FoodMap';
 import { HomeSearchBar } from '@/components/home/HomeSearchBar';
@@ -12,6 +13,7 @@ import { RestaurantDetailSheet } from '@/components/home/RestaurantDetailSheet';
 import { SavedRestaurantsSheet } from '@/components/home/SavedRestaurantsSheet';
 import { UnderConstructionCard } from '@/components/home/UnderConstructionCard';
 import { getModeConfig, type MactMode } from '@/components/home/mactModes';
+import { getSavedPlaceIds, toggleSavedPlace } from '@/lib/favourites';
 import { getNearbyPlaces, getPlacesByMode, type Place } from '@/services/placesService';
 
 const NEARBY_RADIUS_METERS = 10000;
@@ -20,6 +22,7 @@ const REQUEST_TIMEOUT_MS = 8000;
 export default function HomeScreen() {
   const [selectedMode, setSelectedMode] = useState<MactMode>('food');
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<FoodCategoryChip>('All');
   const [results, setResults] = useState<HomeResult[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -31,6 +34,7 @@ export default function HomeScreen() {
   const [selectedFoodPlace, setSelectedFoodPlace] = useState<Place | null>(null);
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [isSavedSheetOpen, setIsSavedSheetOpen] = useState(false);
+  const [savedPlaceIds, setSavedPlaceIds] = useState<string[]>([]);
   const insets = useSafeAreaInsets();
   const mode = useMemo(() => getModeConfig(selectedMode), [selectedMode]);
   const foodMode = useMemo(() => getModeConfig('food'), []);
@@ -62,6 +66,14 @@ export default function HomeScreen() {
     void Promise.resolve().then(loadResults);
   }, [loadResults]);
 
+  const refreshSavedPlaceIds = useCallback(async () => {
+    setSavedPlaceIds(await getSavedPlaceIds());
+  }, []);
+
+  useEffect(() => {
+    void Promise.resolve().then(refreshSavedPlaceIds);
+  }, [refreshSavedPlaceIds]);
+
   const restoreNormalFoodResults = useCallback(async () => {
     try {
       const places = await withTimeout(getPlacesByMode('food'));
@@ -89,6 +101,7 @@ export default function HomeScreen() {
     setIsBrowsingNearArea(false);
     setUserLocation(null);
     setIsMapExpanded(false);
+    if (nextMode !== 'food') setSelectedCategory('All');
   }, []);
 
   const handlePressFoodPlace = useCallback((place: Place) => {
@@ -98,6 +111,7 @@ export default function HomeScreen() {
   const handleSelectSavedRestaurant = useCallback(async (place: Place) => {
     setIsSavedSheetOpen(false);
     setSearchQuery('');
+    setSelectedCategory('All');
     if (isNearMeActive) {
       setIsNearMeActive(false);
       setIsBrowsingNearArea(false);
@@ -160,19 +174,38 @@ export default function HomeScreen() {
     }
   }, [restoreNormalFoodResults]);
 
+  const handleToggleSavedPlace = useCallback(async (placeId: string) => {
+    const nextIsSaved = await toggleSavedPlace(placeId);
+
+    setSavedPlaceIds((current) => {
+      if (nextIsSaved) {
+        return current.includes(placeId) ? current : [...current, placeId];
+      }
+
+      return current.filter((savedPlaceId) => savedPlaceId !== placeId);
+    });
+  }, []);
+
   const filteredResults = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    if (!query) return results;
+    const selectedCategoryQuery = selectedCategory === 'All' ? '' : selectedCategory.toLowerCase();
 
     return results.filter((result) => {
       if (result.kind !== 'place') return false;
-      return [result.item.name, result.item.cuisine, result.item.suburb]
+
+      const category = result.item.category.toLowerCase();
+      const matchesCategory = !selectedCategoryQuery || category.includes(selectedCategoryQuery);
+      const matchesQuery =
+        !query ||
+        [result.item.name, result.item.cuisine, result.item.suburb, result.item.category]
         .filter(Boolean)
         .join(' ')
         .toLowerCase()
         .includes(query);
+
+      return matchesCategory && matchesQuery;
     });
-  }, [results, searchQuery]);
+  }, [results, searchQuery, selectedCategory]);
 
   const constructionCopy = getConstructionCopy(selectedMode);
   const bottomPadding = insets.bottom + 8;
@@ -198,11 +231,18 @@ export default function HomeScreen() {
             </Text>
           </View>
           {selectedMode === 'food' ? (
-            <HomeSearchBar
-              accentColor={mode.color}
-              onChangeText={setSearchQuery}
-              value={searchQuery}
-            />
+            <>
+              <HomeSearchBar
+                accentColor={mode.color}
+                onChangeText={setSearchQuery}
+                value={searchQuery}
+              />
+              <CategoryChips
+                accentColor={mode.color}
+                onSelectCategory={setSelectedCategory}
+                selectedCategory={selectedCategory}
+              />
+            </>
           ) : null}
         </View> : null}
 
@@ -246,13 +286,19 @@ export default function HomeScreen() {
               ) : null}
               <MapResults
                 accentColor={mode.color}
-                emptyMessage={searchQuery ? 'Try another name, cuisine, or suburb.' : 'No halal restaurants are available yet.'}
+                emptyMessage={
+                  searchQuery || selectedCategory !== 'All'
+                    ? 'Try another restaurant, cuisine, suburb, or category.'
+                    : 'No halal restaurants are available yet.'
+                }
                 errorMessage={errorMessage}
                 isCollapsedPreview={isMapExpanded}
                 isLoading={isLoading}
                 onPressFoodPlace={handlePressFoodPlace}
                 onRetry={loadResults}
+                onToggleSavedPlace={handleToggleSavedPlace}
                 results={filteredResults}
+                savedPlaceIds={savedPlaceIds}
                 selectedPlaceId={selectedFoodPlace?.id}
               />
             </FoodMap>
@@ -305,10 +351,13 @@ export default function HomeScreen() {
 
       <RestaurantDetailSheet
         accentColor={foodMode.color}
+        isSaved={selectedFoodPlace ? savedPlaceIds.includes(selectedFoodPlace.id) : false}
         onClose={() => {
           setSelectedFoodPlace(null);
           setIsMapExpanded(false);
         }}
+        onSavedChange={refreshSavedPlaceIds}
+        onToggleSavedPlace={handleToggleSavedPlace}
         place={selectedFoodPlace}
       />
       <SavedRestaurantsSheet

@@ -11,9 +11,10 @@ import {
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { NativeSyntheticEvent } from 'react-native';
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import type { HomeResult } from '@/components/home/MapResults';
+import { SymbolIconButton } from '@/components/home/SymbolIconButton';
 import type { Place } from '@/services/placesService';
 
 type RealFoodMapProps = {
@@ -243,24 +244,36 @@ export function RealFoodMap({
         <View pointerEvents="none" style={styles.mapTint} />
 
         <View style={styles.mapActions}>
-          <Pressable
+          <SymbolIconButton
             accessibilityLabel="Fit visible restaurants"
-            accessibilityRole="button"
+            backgroundColor="#FFFFFF"
+            color="#2A302D"
+            fallback="⌖"
+            name={{ ios: 'scope', android: 'fit_screen', web: 'fit_screen' }}
             onPress={fitRestaurants}
-            style={({ pressed }) => [styles.mapActionButton, pressed && styles.pressed]}
-          >
-            <Text style={styles.mapActionLabel}>Fit Restaurants</Text>
-          </Pressable>
-          <Pressable
+            size={21}
+          />
+          <SymbolIconButton
             accessibilityLabel={isExpanded ? 'Collapse map' : 'Expand map'}
-            accessibilityRole="button"
+            backgroundColor="#FFFFFF"
+            color="#2A302D"
+            fallback={isExpanded ? '↙' : '↗'}
+            name={
+              isExpanded
+                ? {
+                    ios: 'arrow.down.right.and.arrow.up.left',
+                    android: 'fullscreen_exit',
+                    web: 'fullscreen_exit',
+                  }
+                : {
+                    ios: 'arrow.up.left.and.arrow.down.right',
+                    android: 'fullscreen',
+                    web: 'fullscreen',
+                  }
+            }
             onPress={onToggleExpanded}
-            style={({ pressed }) => [styles.mapActionButton, pressed && styles.pressed]}
-          >
-            <Text style={styles.mapActionLabel}>
-              {isExpanded ? 'Collapse Map' : 'Expand Map'}
-            </Text>
-          </Pressable>
+            size={21}
+          />
         </View>
       </View>
 
@@ -319,17 +332,5 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
   },
-  mapActionButton: {
-    minWidth: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 13,
-    elevation: 4,
-  },
-  mapActionLabel: { color: '#2A302D', fontSize: 13, fontWeight: '900' },
-  pressed: { opacity: 0.72 },
   children: { flex: 1, minHeight: 0 },
 });

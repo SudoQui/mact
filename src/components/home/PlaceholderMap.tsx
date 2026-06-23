@@ -3,6 +3,8 @@ import type { ReactNode } from 'react';
 import { useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { SymbolIconButton } from '@/components/home/SymbolIconButton';
+
 type PlaceholderMapProps = {
   accentColor: string;
   children: ReactNode;
@@ -215,13 +217,30 @@ export function PlaceholderMap({
             style={({ pressed }) => [styles.actionButton, pressed && styles.controlPressed]}>
             <Text style={styles.actionLabel}>Fit Restaurants</Text>
           </Pressable>
-          <Pressable
-            accessibilityLabel={isExpanded ? 'Collapse map' : 'Expand map'}
-            accessibilityRole="button"
-            onPress={onToggleExpanded}
-            style={({ pressed }) => [styles.actionButton, pressed && styles.controlPressed]}>
-            <Text style={styles.actionLabel}>{isExpanded ? 'Collapse Map' : 'Expand Map'}</Text>
-          </Pressable>
+          {onToggleExpanded ? (
+            <SymbolIconButton
+              accessibilityLabel={isExpanded ? 'Collapse map' : 'Expand map'}
+              backgroundColor="#FFFFFF"
+              color="#3F4652"
+              fallback={isExpanded ? '↙' : '↗'}
+              name={
+                isExpanded
+                  ? {
+                      ios: 'arrow.down.right.and.arrow.up.left',
+                      android: 'fullscreen_exit',
+                      web: 'fullscreen_exit',
+                    }
+                  : {
+                      ios: 'arrow.up.left.and.arrow.down.right',
+                      android: 'fullscreen',
+                      web: 'fullscreen',
+                    }
+              }
+              onPress={onToggleExpanded}
+              size={21}
+              style={styles.controlButton}
+            />
+          ) : null}
         </View>
       </View>
 

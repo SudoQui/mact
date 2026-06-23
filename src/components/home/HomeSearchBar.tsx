@@ -13,7 +13,7 @@ export function HomeSearchBar({ accentColor, value, onChangeText }: HomeSearchBa
         autoCapitalize="none"
         autoCorrect={false}
         onChangeText={onChangeText}
-        placeholder="Search MACT"
+        placeholder="Search restaurants, cuisines, suburbs"
         placeholderTextColor="#7B7F87"
         returnKeyType="search"
         style={styles.input}

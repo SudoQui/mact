@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-const ACTIONS = ['Near Me', 'Saved'] as const;
+import { SymbolIconButton } from '@/components/home/SymbolIconButton';
 
 type FloatingActionButtonsProps = {
   accentColor: string;
@@ -19,48 +19,39 @@ export function FloatingActionButtons({
 }: FloatingActionButtonsProps) {
   return (
     <View style={styles.container}>
-      {ACTIONS.map((label) => {
-        return (
-          <Pressable
-            key={label}
-            accessibilityRole="button"
-            disabled={label === 'Near Me' && (isNearMeLoading || isNearMeActive)}
-            onPress={getActionPressHandler(label, onPressNearMe, onPressSaved)}
-            style={({ pressed }) => [
-              styles.button,
-              { borderColor: accentColor },
-              label === 'Near Me' && isNearMeActive && { backgroundColor: accentColor },
-              (pressed || (label === 'Near Me' && isNearMeLoading)) && styles.pressed,
-            ]}>
-            <Text
-              style={[
-                styles.label,
-                label === 'Near Me' && isNearMeActive && styles.activeLabel,
-                { color: label === 'Near Me' && isNearMeActive ? '#FFFFFF' : accentColor },
-              ]}>
-              {label === 'Near Me' && isNearMeLoading ? 'Locating...' : label}
-            </Text>
-          </Pressable>
-        );
-      })}
+      <Pressable
+        accessibilityRole="button"
+        disabled={isNearMeLoading || isNearMeActive}
+        onPress={onPressNearMe}
+        style={({ pressed }) => [
+          styles.nearMeButton,
+          { borderColor: accentColor },
+          isNearMeActive && { backgroundColor: accentColor },
+          (pressed || isNearMeLoading) && styles.pressed,
+        ]}
+      >
+        <Text
+          style={[
+            styles.label,
+            isNearMeActive && styles.activeLabel,
+            { color: isNearMeActive ? '#FFFFFF' : accentColor },
+          ]}
+        >
+          {isNearMeLoading ? 'Locating...' : 'Near Me'}
+        </Text>
+      </Pressable>
+      <SymbolIconButton
+        accessibilityLabel="Saved restaurants"
+        borderColor="#E8DED3"
+        color={accentColor}
+        fallback="☆"
+        name={{ ios: 'bookmark', android: 'bookmark_border', web: 'bookmark_border' }}
+        onPress={onPressSaved}
+        size={21}
+        style={styles.savedButton}
+      />
     </View>
   );
-}
-
-function getActionPressHandler(
-  label: (typeof ACTIONS)[number],
-  onPressNearMe: () => void,
-  onPressSaved: () => void
-) {
-  if (label === 'Near Me') {
-    return onPressNearMe;
-  }
-
-  if (label === 'Saved') {
-    return onPressSaved;
-  }
-
-  return onPressSaved;
 }
 
 const styles = StyleSheet.create({
@@ -73,7 +64,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     zIndex: 50,
   },
-  button: {
+  nearMeButton: {
     minHeight: 44,
     minWidth: 88,
     borderRadius: 22,
@@ -94,6 +85,13 @@ const styles = StyleSheet.create({
   },
   activeLabel: {
     color: '#FFFFFF',
+  },
+  savedButton: {
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 4,
   },
   pressed: {
     opacity: 0.72,

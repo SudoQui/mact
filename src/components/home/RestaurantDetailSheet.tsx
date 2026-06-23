@@ -12,13 +12,15 @@ import {
   View,
 } from 'react-native';
 
+import { SymbolIconButton } from '@/components/home/SymbolIconButton';
 import { formatDistance } from '@/lib/distance';
-import { isPlaceSaved, toggleSavedPlace } from '@/lib/favourites';
 import { getFoodDetails, type FoodDetails, type Place } from '@/services/placesService';
 
 type RestaurantDetailSheetProps = {
   accentColor: string;
+  isSaved: boolean;
   onSavedChange?: () => void;
+  onToggleSavedPlace: (placeId: string) => Promise<void>;
   onClose: () => void;
   place: Place | null;
 };
@@ -27,14 +29,15 @@ type ChecklistItem = { label: string; value: string };
 
 export function RestaurantDetailSheet({
   accentColor,
+  isSaved,
   onSavedChange,
+  onToggleSavedPlace,
   onClose,
   place,
 }: RestaurantDetailSheetProps) {
   const [details, setDetails] = useState<FoodDetails | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isSaved, setIsSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const { height: screenHeight } = useWindowDimensions();
   const sheetHeight = Math.round(screenHeight * 0.52);
@@ -94,27 +97,23 @@ export function RestaurantDetailSheet({
     }
   }, [place]);
 
-  const loadSavedState = useCallback(async () => {
-    if (place) setIsSaved(await isPlaceSaved(place.id));
-  }, [place]);
-
   const handleToggleSaved = useCallback(async () => {
     if (!place || isSaving) return;
 
     try {
       setIsSaving(true);
-      setIsSaved(await toggleSavedPlace(place.id));
+      await onToggleSavedPlace(place.id);
       onSavedChange?.();
     } finally {
       setIsSaving(false);
     }
-  }, [isSaving, onSavedChange, place]);
+  }, [isSaving, onSavedChange, onToggleSavedPlace, place]);
 
   useEffect(() => {
     if (place) {
-      void Promise.resolve().then(() => Promise.all([loadDetails(), loadSavedState()]));
+      void Promise.resolve().then(loadDetails);
     }
-  }, [loadDetails, loadSavedState, place]);
+  }, [loadDetails, place]);
 
   useEffect(() => {
     translateY.setValue(0);
@@ -135,7 +134,24 @@ export function RestaurantDetailSheet({
 
       <View style={styles.header}>
         <View style={styles.titleBlock}>
-          <Text numberOfLines={2} style={styles.title}>{place.name}</Text>
+          <View style={styles.titleRow}>
+            <Text numberOfLines={2} style={styles.title}>{place.name}</Text>
+            <SymbolIconButton
+              accessibilityLabel={isSaved ? 'Unsave restaurant' : 'Save restaurant'}
+              backgroundColor={isSaved ? `${accentColor}12` : '#F0ECE6'}
+              color={isSaved ? accentColor : '#303531'}
+              disabled={isSaving}
+              fallback={isSaved ? '★' : '☆'}
+              name={
+                isSaved
+                  ? { ios: 'bookmark.fill', android: 'bookmark', web: 'bookmark' }
+                  : { ios: 'bookmark', android: 'bookmark_border', web: 'bookmark_border' }
+              }
+              onPress={handleToggleSaved}
+              selected={isSaved}
+              size={21}
+            />
+          </View>
           {meta ? <Text style={styles.meta}>{meta}</Text> : null}
           <Text numberOfLines={2} style={styles.address}>{place.address}</Text>
           {distance ? <Text style={[styles.distance, { color: accentColor }]}>{distance}</Text> : null}
@@ -164,13 +180,6 @@ export function RestaurantDetailSheet({
           disabled={!place.phone}
           label="Call"
           onPress={() => openPhone(place.phone)}
-        />
-        <ActionButton
-          accentColor={accentColor}
-          disabled={isSaving}
-          label={isSaved ? 'Saved' : 'Save'}
-          onPress={handleToggleSaved}
-          selected={isSaved}
         />
       </View>
 
@@ -345,7 +354,8 @@ const styles = StyleSheet.create({
   },
   header: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
   titleBlock: { flex: 1, gap: 2 },
-  title: { color: '#202421', fontSize: 20, fontWeight: '900', lineHeight: 24 },
+  titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  title: { flex: 1, color: '#202421', fontSize: 20, fontWeight: '900', lineHeight: 24 },
   meta: { color: '#656B67', fontSize: 13, fontWeight: '800' },
   address: { color: '#4B514D', fontSize: 12, fontWeight: '600', lineHeight: 17 },
   distance: { fontSize: 12, fontWeight: '900' },

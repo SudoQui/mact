@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { memo, type ReactNode } from 'react';
 
 import type { HomeResult } from '@/components/home/MapResults';
 import { MockFoodMap } from '@/components/home/MockFoodMap';
@@ -17,12 +17,13 @@ type FoodMapProps = {
   isExpanded: boolean;
   onToggleExpanded: () => void;
   onMapInteraction?: () => void;
+  searchQuery: string;
   children?: ReactNode;
 };
 
 const USE_REAL_FOOD_MAP = true;
 
-export function FoodMap({
+export const FoodMap = memo(function FoodMap({
   accentColor,
   places,
   selectedPlace,
@@ -32,6 +33,7 @@ export function FoodMap({
   isExpanded,
   onToggleExpanded,
   onMapInteraction,
+  searchQuery,
   children,
 }: FoodMapProps) {
   if (USE_REAL_FOOD_MAP) {
@@ -46,6 +48,7 @@ export function FoodMap({
         isExpanded={isExpanded}
         onToggleExpanded={onToggleExpanded}
         onMapInteraction={onMapInteraction}
+        searchQuery={searchQuery}
       >
         {children}
       </RealFoodMap>
@@ -63,8 +66,9 @@ export function FoodMap({
       isExpanded={isExpanded}
       onToggleExpanded={onToggleExpanded}
       onMapInteraction={onMapInteraction}
+      searchQuery={searchQuery}
     >
       {children}
     </MockFoodMap>
   );
-}
+});

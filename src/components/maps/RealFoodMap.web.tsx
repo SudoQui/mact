@@ -14,6 +14,7 @@ type RealFoodMapProps = {
   isExpanded: boolean;
   onToggleExpanded: () => void;
   onMapInteraction?: () => void;
+  searchQuery: string;
   children?: ReactNode;
 };
 
@@ -27,6 +28,7 @@ export function RealFoodMap({
   isExpanded,
   onToggleExpanded,
   onMapInteraction,
+  searchQuery,
   children,
 }: RealFoodMapProps) {
   return (
@@ -40,6 +42,7 @@ export function RealFoodMap({
       isExpanded={isExpanded}
       onToggleExpanded={onToggleExpanded}
       onMapInteraction={onMapInteraction}
+      searchQuery={searchQuery}
     >
       {children}
     </MockFoodMap>

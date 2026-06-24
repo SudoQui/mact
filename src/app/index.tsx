@@ -27,6 +27,8 @@ import { getNearbyPlaces, type Place } from '@/services/placesService';
 
 const NEARBY_RADIUS_METERS = 10000;
 const REQUEST_TIMEOUT_MS = 8000;
+const MODE_SWITCHER_HEIGHT = 54;
+const SHEET_MODE_SWITCHER_GAP = 10;
 
 export default function HomeScreen() {
   const [selectedMode, setSelectedMode] = useState<MactMode>('food');
@@ -56,6 +58,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const mode = useMemo(() => getModeConfig(selectedMode), [selectedMode]);
   const foodMode = useMemo(() => getModeConfig('food'), []);
+  const isFoodMode = selectedMode === 'food';
 
   const refreshSavedPlaceIds = useCallback(async () => {
     setSavedPlaceIds(await getSavedPlaceIds());
@@ -92,18 +95,6 @@ export default function HomeScreen() {
     }).start();
 
     setSelectedMode(nextMode);
-    setSelectedFoodPlace(null);
-    setNearMeMessage(null);
-    setIsNearMeActive(false);
-    setIsBrowsingNearArea(false);
-    setNearbyPlaces([]);
-    setUserLocation(null);
-    setIsMapExpanded(false);
-    setIsFilterSheetOpen(false);
-    if (nextMode !== 'food') {
-      setSelectedCategory('All');
-      setFoodFilters(EMPTY_FOOD_FILTERS);
-    }
   }, [modeProgress, selectedMode]);
 
   const handlePressFoodPlace = useCallback((place: Place) => {
@@ -127,6 +118,14 @@ export default function HomeScreen() {
   const handleMapInteraction = useCallback(() => {
     if (isNearMeActive) setIsBrowsingNearArea(true);
   }, [isNearMeActive]);
+
+  const handleToggleMapExpanded = useCallback(() => {
+    setIsMapExpanded((current) => !current);
+  }, []);
+
+  const handleCloseRestaurantSheet = useCallback(() => {
+    setSelectedFoodPlace(null);
+  }, []);
 
   const handlePressNearMe = useCallback(async () => {
     try {
@@ -234,6 +233,13 @@ export default function HomeScreen() {
     });
   }, [foodFilters, results, savedPlaceIds, searchQuery, selectedCategory]);
 
+  const handleSelectMapPlace = useCallback((placeId: string) => {
+    const result = filteredResults.find(
+      (item) => item.kind === 'place' && item.item.id === placeId
+    );
+    if (result?.kind === 'place') handlePressFoodPlace(result.item);
+  }, [filteredResults, handlePressFoodPlace]);
+
   const constructionCopy = getConstructionCopy(selectedMode);
   const activeFoodFilters = getActiveFoodFilters(foodFilters);
   const activeFilterCount = activeFoodFilters.filter((filter) => filter.id !== 'savedOnly').length;
@@ -246,6 +252,7 @@ export default function HomeScreen() {
         ? 'Refreshing halal food...'
         : null;
   const bottomPadding = insets.bottom + 8;
+  const restaurantSheetBottomOffset = bottomPadding + MODE_SWITCHER_HEIGHT + SHEET_MODE_SWITCHER_GAP;
   const screenBackgroundColor = modeProgress.interpolate({
     inputRange: [0, 1, 2],
     outputRange: ['#F4F7FF', '#FBF7F1', '#F4FBF5'],
@@ -265,27 +272,27 @@ export default function HomeScreen() {
         ]}
       >
         <View style={styles.body}>
-          {selectedMode !== 'food' || !isMapExpanded ? <View style={styles.header}>
+          {!isFoodMode || !isMapExpanded ? <View style={styles.header}>
             <View style={styles.brandRow}>
               <Text style={[styles.brand, { color: mode.color }]}>MACT</Text>
               <Text numberOfLines={1} style={styles.title}>
-                {selectedMode === 'food' ? 'Halal food in Canberra' : mode.title}
+                {isFoodMode ? 'Halal food in Canberra' : mode.title}
               </Text>
             </View>
-            {selectedMode === 'food' ? (
+            {isFoodMode ? (
               <>
                 <HomeSearchBar
-                  accentColor={mode.color}
+                  accentColor={foodMode.color}
                   onChangeText={setSearchQuery}
                   value={searchQuery}
                 />
                 <CategoryChips
-                  accentColor={mode.color}
+                  accentColor={foodMode.color}
                   onSelectCategory={setSelectedCategory}
                   selectedCategory={selectedCategory}
                 />
                 <ActiveFoodFilters
-                  accentColor={mode.color}
+                  accentColor={foodMode.color}
                   filters={foodFilters}
                   onClearAll={handleClearFoodFilters}
                   onRemoveFilter={handleRemoveFoodFilter}
@@ -294,26 +301,70 @@ export default function HomeScreen() {
             ) : null}
           </View> : null}
 
-          {selectedMode === 'food' ? (
-            <View style={styles.discovery}>
-            <FoodMap
-              accentColor={mode.color}
-              isExpanded={isMapExpanded}
-              nearMeActive={isNearMeActive}
-              onMapInteraction={handleMapInteraction}
-              onSelectPlace={(placeId) => {
-                const result = filteredResults.find(
-                  (item) => item.kind === 'place' && item.item.id === placeId
-                );
-                if (result?.kind === 'place') handlePressFoodPlace(result.item);
-              }}
-              onToggleExpanded={() => setIsMapExpanded((current) => !current)}
-              places={filteredResults}
-              selectedPlace={selectedFoodPlace}
-              userLocation={userLocation}
+          <View style={styles.modePages}>
+            <View
+              pointerEvents={isFoodMode ? 'auto' : 'none'}
+              style={[
+                styles.modePage,
+                styles.discovery,
+                isFoodMode ? styles.activeModePage : styles.inactiveModePage,
+              ]}
             >
-              {isNearMeActive || nearMeMessage || foodDataStatusMessage ? (
-                <View style={styles.notice}>
+              <FoodMap
+                accentColor={foodMode.color}
+                isExpanded={isMapExpanded}
+                nearMeActive={isNearMeActive}
+                onMapInteraction={handleMapInteraction}
+                onSelectPlace={handleSelectMapPlace}
+                onToggleExpanded={handleToggleMapExpanded}
+                places={filteredResults}
+                searchQuery={searchQuery}
+                selectedPlace={selectedFoodPlace}
+                userLocation={userLocation}
+              >
+                {isNearMeActive || nearMeMessage || foodDataStatusMessage ? (
+                  <View style={styles.notice}>
+                    <Text style={styles.noticeText}>
+                      {isNearMeActive
+                        ? isBrowsingNearArea
+                          ? 'Browsing map near your area'
+                          : 'Halal food within 10 km'
+                        : nearMeMessage ?? foodDataStatusMessage}
+                    </Text>
+                    {isNearMeActive ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        onPress={handleClearNearMe}
+                        style={({ pressed }) => pressed && styles.pressed}
+                      >
+                        <Text style={[styles.clearLabel, { color: foodMode.color }]}>Clear</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                ) : null}
+                <MapResults
+                  accentColor={foodMode.color}
+                  emptyMessage={
+                    searchQuery || selectedCategory !== 'All'
+                      ? 'Try another restaurant, cuisine, suburb, category, or filter.'
+                      : hasActiveFoodFilters
+                        ? 'No restaurants match those food filters yet.'
+                      : 'No halal restaurants are available yet.'
+                  }
+                  errorMessage={foodDataErrorMessage}
+                  isCollapsedPreview={isMapExpanded}
+                  isLoading={isFoodInitialLoading}
+                  onPressFoodPlace={handlePressFoodPlace}
+                  onRetry={refreshFoodPlaces}
+                  onToggleSavedPlace={handleToggleSavedPlace}
+                  results={filteredResults}
+                  savedPlaceIds={savedPlaceIds}
+                  selectedPlaceId={selectedFoodPlace?.id}
+                />
+              </FoodMap>
+
+              {isMapExpanded && (isNearMeActive || nearMeMessage || foodDataStatusMessage) ? (
+                <View style={styles.fullscreenNotice}>
                   <Text style={styles.noticeText}>
                     {isNearMeActive
                       ? isBrowsingNearArea
@@ -327,85 +378,53 @@ export default function HomeScreen() {
                       onPress={handleClearNearMe}
                       style={({ pressed }) => pressed && styles.pressed}
                     >
-                      <Text style={[styles.clearLabel, { color: mode.color }]}>Clear</Text>
+                      <Text style={[styles.clearLabel, { color: foodMode.color }]}>Clear Near Me</Text>
                     </Pressable>
                   ) : null}
                 </View>
               ) : null}
-              <MapResults
-                accentColor={mode.color}
-                emptyMessage={
-                  searchQuery || selectedCategory !== 'All'
-                    ? 'Try another restaurant, cuisine, suburb, category, or filter.'
-                    : hasActiveFoodFilters
-                      ? 'No restaurants match those food filters yet.'
-                    : 'No halal restaurants are available yet.'
-                }
-                errorMessage={foodDataErrorMessage}
-                isCollapsedPreview={isMapExpanded}
-                isLoading={isFoodInitialLoading}
-                onPressFoodPlace={handlePressFoodPlace}
-                onRetry={refreshFoodPlaces}
-                onToggleSavedPlace={handleToggleSavedPlace}
-                results={filteredResults}
-                savedPlaceIds={savedPlaceIds}
-                selectedPlaceId={selectedFoodPlace?.id}
-              />
-            </FoodMap>
 
-            {isMapExpanded && (isNearMeActive || nearMeMessage || foodDataStatusMessage) ? (
-              <View style={styles.fullscreenNotice}>
-                <Text style={styles.noticeText}>
-                  {isNearMeActive
-                    ? isBrowsingNearArea
-                      ? 'Browsing map near your area'
-                      : 'Halal food within 10 km'
-                    : nearMeMessage ?? foodDataStatusMessage}
-                </Text>
-                {isNearMeActive ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={handleClearNearMe}
-                    style={({ pressed }) => pressed && styles.pressed}
-                  >
-                    <Text style={[styles.clearLabel, { color: mode.color }]}>Clear Near Me</Text>
-                  </Pressable>
-                ) : null}
+              {!selectedFoodPlace ? (
+                <FloatingActionButtons
+                  activeFilterCount={activeFilterCount}
+                  accentColor={foodMode.color}
+                  isNearMeActive={isNearMeActive}
+                  isNearMeLoading={isNearMeLoading}
+                  onPressFilter={() => setIsFilterSheetOpen(true)}
+                  onPressNearMe={handlePressNearMe}
+                  onPressSaved={() => setIsSavedSheetOpen(true)}
+                />
+              ) : null}
+
+              <FoodFilterSheet
+                accentColor={foodMode.color}
+                filters={foodFilters}
+                isVisible={isFoodMode && isFilterSheetOpen}
+                onClearAll={handleClearFoodFilters}
+                onClose={() => setIsFilterSheetOpen(false)}
+                onToggleFilter={handleToggleFoodFilter}
+              />
+            </View>
+
+            {constructionCopy ? (
+              <View
+                pointerEvents={isFoodMode ? 'none' : 'auto'}
+                style={[
+                  styles.modePage,
+                  styles.construction,
+                  isFoodMode ? styles.inactiveModePage : styles.activeModePage,
+                ]}
+              >
+                <UnderConstructionCard
+                  accentColor={mode.color}
+                  body={constructionCopy.body}
+                  footer={constructionCopy.footer}
+                  icon={constructionCopy.icon}
+                  title={constructionCopy.title}
+                />
               </View>
             ) : null}
-
-            {!selectedFoodPlace ? (
-              <FloatingActionButtons
-                activeFilterCount={activeFilterCount}
-                accentColor={mode.color}
-                isNearMeActive={isNearMeActive}
-                isNearMeLoading={isNearMeLoading}
-                onPressFilter={() => setIsFilterSheetOpen(true)}
-                onPressNearMe={handlePressNearMe}
-                onPressSaved={() => setIsSavedSheetOpen(true)}
-              />
-            ) : null}
-
-            <FoodFilterSheet
-              accentColor={mode.color}
-              filters={foodFilters}
-              isVisible={isFilterSheetOpen}
-              onClearAll={handleClearFoodFilters}
-              onClose={() => setIsFilterSheetOpen(false)}
-              onToggleFilter={handleToggleFoodFilter}
-            />
-            </View>
-          ) : constructionCopy ? (
-            <View style={styles.construction}>
-              <UnderConstructionCard
-                accentColor={mode.color}
-                body={constructionCopy.body}
-                footer={constructionCopy.footer}
-                icon={constructionCopy.icon}
-                title={constructionCopy.title}
-              />
-            </View>
-          ) : null}
+          </View>
         </View>
 
         <ModeBar onSelectMode={handleSelectMode} selectedMode={selectedMode} />
@@ -413,19 +432,17 @@ export default function HomeScreen() {
 
       <RestaurantDetailSheet
         accentColor={foodMode.color}
+        bottomOffset={restaurantSheetBottomOffset}
         isSaved={selectedFoodPlace ? savedPlaceIds.includes(selectedFoodPlace.id) : false}
-        onClose={() => {
-          setSelectedFoodPlace(null);
-          setIsMapExpanded(false);
-        }}
+        onClose={handleCloseRestaurantSheet}
         onSavedChange={refreshSavedPlaceIds}
         onToggleSavedPlace={handleToggleSavedPlace}
-        place={selectedFoodPlace}
+        place={isFoodMode ? selectedFoodPlace : null}
       />
       <SavedRestaurantsSheet
         accentColor={foodMode.color}
         isLoadingPlaces={isFoodInitialLoading}
-        isVisible={isSavedSheetOpen}
+        isVisible={isFoodMode && isSavedSheetOpen}
         onClose={() => setIsSavedSheetOpen(false)}
         onSelectPlace={handleSelectSavedRestaurant}
         places={foodPlaces}
@@ -494,14 +511,18 @@ function getConstructionCopy(mode: MactMode) {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
-  content: { flex: 1, gap: 10 },
+  screen: { flex: 1, position: 'relative' },
+  content: { flex: 1, gap: 10, zIndex: 1 },
   body: { flex: 1, gap: 10, minHeight: 0 },
   header: { gap: 7 },
   brandRow: { flexDirection: 'row', alignItems: 'baseline', gap: 10 },
   brand: { fontSize: 18, fontWeight: '900', letterSpacing: 0.5 },
   title: { flex: 1, color: '#222724', fontSize: 17, fontWeight: '800' },
-  discovery: { flex: 1, minHeight: 0, position: 'relative' },
+  modePages: { flex: 1, minHeight: 0, position: 'relative' },
+  modePage: { ...StyleSheet.absoluteFillObject, minHeight: 0 },
+  activeModePage: { opacity: 1, zIndex: 2 },
+  inactiveModePage: { opacity: 0, zIndex: 0 },
+  discovery: { flex: 1, minHeight: 0 },
   construction: { flex: 1, minHeight: 0 },
   notice: {
     minHeight: 42,

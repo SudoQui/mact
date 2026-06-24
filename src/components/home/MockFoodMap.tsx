@@ -14,6 +14,7 @@ type MockFoodMapProps = {
   isExpanded: boolean;
   onToggleExpanded: () => void;
   onMapInteraction?: () => void;
+  searchQuery?: string;
   children?: ReactNode;
 };
 

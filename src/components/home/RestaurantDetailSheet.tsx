@@ -19,6 +19,7 @@ import { getFoodDetails, type FoodDetails, type Place } from '@/services/placesS
 
 type RestaurantDetailSheetProps = {
   accentColor: string;
+  bottomOffset?: number;
   isSaved: boolean;
   onSavedChange?: () => void;
   onToggleSavedPlace: (placeId: string) => Promise<void>;
@@ -30,6 +31,7 @@ type ChecklistItem = { label: string; value: string };
 
 export function RestaurantDetailSheet({
   accentColor,
+  bottomOffset = 0,
   isSaved,
   onSavedChange,
   onToggleSavedPlace,
@@ -41,8 +43,8 @@ export function RestaurantDetailSheet({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const { height: screenHeight } = useWindowDimensions();
-  const sheetHeight = Math.round(screenHeight * 0.52);
-  const [translateY] = useState(() => new Animated.Value(sheetHeight));
+  const cardMaxHeight = Math.min(Math.round(screenHeight * 0.52), 430);
+  const [translateY] = useState(() => new Animated.Value(cardMaxHeight));
 
   const resetSheetPosition = useCallback(() => {
     Animated.spring(translateY, {
@@ -55,14 +57,14 @@ export function RestaurantDetailSheet({
 
   const dismissSheet = useCallback(() => {
     Animated.timing(translateY, {
-      toValue: sheetHeight,
+      toValue: cardMaxHeight,
       duration: 220,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start(({ finished }) => {
       if (finished) onClose();
     });
-  }, [onClose, sheetHeight, translateY]);
+  }, [cardMaxHeight, onClose, translateY]);
 
   const panResponder = useMemo(
     () =>
@@ -128,14 +130,14 @@ export function RestaurantDetailSheet({
   useEffect(() => {
     if (!place) return;
 
-    translateY.setValue(sheetHeight);
+    translateY.setValue(cardMaxHeight);
     Animated.timing(translateY, {
       toValue: 0,
       duration: 220,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start();
-  }, [place, sheetHeight, translateY]);
+  }, [cardMaxHeight, place, translateY]);
 
   if (!place) return null;
 
@@ -144,102 +146,109 @@ export function RestaurantDetailSheet({
 
   return (
     <Animated.View
-      style={[styles.sheet, { height: sheetHeight, transform: [{ translateY }] }]}
+      pointerEvents="box-none"
+      style={[styles.overlay, { bottom: bottomOffset, transform: [{ translateY }] }]}
     >
-      <View {...panResponder.panHandlers} style={styles.dragArea}>
-        <View style={styles.handle} />
-      </View>
-
-      <View style={styles.header}>
-        <View style={styles.titleBlock}>
-          <View style={styles.titleRow}>
-            <Text numberOfLines={2} style={styles.title}>{place.name}</Text>
-            <BookmarkButton
-              accentColor={accentColor}
-              disabled={isSaving}
-              isSaved={isSaved}
-              onPress={handleToggleSaved}
-            />
-          </View>
-          {meta ? <Text style={styles.meta}>{meta}</Text> : null}
-          <Text numberOfLines={2} style={styles.address}>{place.address}</Text>
-          {distance ? <Text style={[styles.distance, { color: accentColor }]}>{distance}</Text> : null}
+      <View style={[styles.card, { maxHeight: cardMaxHeight }]}>
+        <View {...panResponder.panHandlers} style={styles.dragArea}>
+          <View style={styles.handle} />
         </View>
 
-        <Pressable
-          accessibilityLabel="Close restaurant details"
-          accessibilityRole="button"
-          hitSlop={8}
-          onPress={dismissSheet}
-          style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
-        >
-          <Text style={styles.closeLabel}>X</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.actions}>
-        <ActionButton
-          accentColor={accentColor}
-          label="Directions"
-          onPress={() => openDirections(place)}
-          primary
-        />
-        <ActionButton
-          accentColor={accentColor}
-          disabled={!place.phone}
-          label="Call"
-          onPress={() => openPhone(place.phone)}
-        />
-      </View>
-
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {isLoading ? (
-          <View style={styles.stateContainer}>
-            <ActivityIndicator color={accentColor} />
-            <Text style={styles.stateText}>Checking halal details...</Text>
-          </View>
-        ) : null}
-
-        {!isLoading && errorMessage ? (
-          <View style={styles.stateContainer}>
-            <Text style={styles.errorTitle}>Unable to load details</Text>
-            <Text style={styles.stateText}>{errorMessage}</Text>
-            <Pressable
-              accessibilityRole="button"
-              onPress={loadDetails}
-              style={({ pressed }) => [styles.retryButton, { backgroundColor: accentColor }, pressed && styles.pressed]}
-            >
-              <Text style={styles.primaryLabel}>Retry</Text>
-            </Pressable>
-          </View>
-        ) : null}
-
-        {!isLoading && !errorMessage && !details ? (
-          <View style={styles.stateContainer}>
-            <Text style={styles.emptyTitle}>Halal details need review</Text>
-            <Text style={styles.stateText}>Detailed verification has not been added yet.</Text>
-          </View>
-        ) : null}
-
-        {!isLoading && !errorMessage && details ? (
-          <>
-            <View style={styles.checklist}>
-              {buildChecklist(details).map((item) => (
-                <View key={item.label} style={styles.checklistRow}>
-                  <Text style={styles.checkLabel}>{item.label}</Text>
-                  <Text style={[styles.checkValue, { color: accentColor }]}>{item.value}</Text>
-                </View>
-              ))}
+        <View style={styles.header}>
+          <View style={styles.titleBlock}>
+            <View style={styles.titleRow}>
+              <Text numberOfLines={2} style={styles.title}>{place.name}</Text>
+              <BookmarkButton
+                accentColor={accentColor}
+                disabled={isSaving}
+                isSaved={isSaved}
+                onPress={handleToggleSaved}
+              />
             </View>
-            {details.halal_notes ? (
-              <View style={styles.notesCard}>
-                <Text style={styles.notesTitle}>Halal notes</Text>
-                <Text style={styles.notesText}>{details.halal_notes}</Text>
+            {meta ? <Text style={styles.meta}>{meta}</Text> : null}
+            <Text numberOfLines={2} style={styles.address}>{place.address}</Text>
+            {distance ? <Text style={[styles.distance, { color: accentColor }]}>{distance}</Text> : null}
+          </View>
+
+          <Pressable
+            accessibilityLabel="Close restaurant details"
+            accessibilityRole="button"
+            hitSlop={8}
+            onPress={dismissSheet}
+            style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
+          >
+            <Text style={styles.closeLabel}>X</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.actions}>
+          <ActionButton
+            accentColor={accentColor}
+            label="Directions"
+            onPress={() => openDirections(place)}
+            primary
+          />
+          <ActionButton
+            accentColor={accentColor}
+            disabled={!place.phone}
+            label="Call"
+            onPress={() => openPhone(place.phone)}
+          />
+        </View>
+
+        <ScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+          style={styles.scrollArea}
+        >
+          {isLoading ? (
+            <View style={styles.stateContainer}>
+              <ActivityIndicator color={accentColor} />
+              <Text style={styles.stateText}>Checking halal details...</Text>
+            </View>
+          ) : null}
+
+          {!isLoading && errorMessage ? (
+            <View style={styles.stateContainer}>
+              <Text style={styles.errorTitle}>Unable to load details</Text>
+              <Text style={styles.stateText}>{errorMessage}</Text>
+              <Pressable
+                accessibilityRole="button"
+                onPress={loadDetails}
+                style={({ pressed }) => [styles.retryButton, { backgroundColor: accentColor }, pressed && styles.pressed]}
+              >
+                <Text style={styles.primaryLabel}>Retry</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
+          {!isLoading && !errorMessage && !details ? (
+            <View style={styles.stateContainer}>
+              <Text style={styles.emptyTitle}>Halal details need review</Text>
+              <Text style={styles.stateText}>Detailed verification has not been added yet.</Text>
+            </View>
+          ) : null}
+
+          {!isLoading && !errorMessage && details ? (
+            <>
+              <View style={styles.checklist}>
+                {buildChecklist(details).map((item) => (
+                  <View key={item.label} style={styles.checklistRow}>
+                    <Text style={styles.checkLabel}>{item.label}</Text>
+                    <Text style={[styles.checkValue, { color: accentColor }]}>{item.value}</Text>
+                  </View>
+                ))}
               </View>
-            ) : null}
-          </>
-        ) : null}
-      </ScrollView>
+              {details.halal_notes ? (
+                <View style={styles.notesCard}>
+                  <Text style={styles.notesTitle}>Halal notes</Text>
+                  <Text style={styles.notesText}>{details.halal_notes}</Text>
+                </View>
+              ) : null}
+            </>
+          ) : null}
+        </ScrollView>
+      </View>
     </Animated.View>
   );
 }
@@ -335,18 +344,26 @@ function openPhone(phone: string | null) {
 }
 
 const styles = StyleSheet.create({
-  sheet: {
+  overlay: {
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: 0,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    zIndex: 1000,
+    elevation: 1000,
+  },
+  card: {
+    marginHorizontal: 16,
+    borderRadius: 22,
     backgroundColor: '#FFFCF7',
+    overflow: 'hidden',
     paddingTop: 9,
     paddingHorizontal: 18,
     paddingBottom: 12,
-    elevation: 12,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: -8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    elevation: 24,
   },
   handle: {
     width: 42,
@@ -388,6 +405,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   actionLabel: { fontSize: 13, fontWeight: '900' },
+  scrollArea: { flexShrink: 1 },
   content: { gap: 10, paddingTop: 12, paddingBottom: 18 },
   checklist: { gap: 6 },
   checklistRow: {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -58,107 +59,113 @@ export function SavedRestaurantsSheet({
     }
   }, [isVisible, loadSavedPlaces]);
 
-  if (!isVisible) {
-    return null;
-  }
+  if (!isVisible) return null;
 
   const isSheetLoading = isLoading || isLoadingPlaces;
 
   return (
-    <View style={styles.overlay}>
-      <Pressable accessibilityRole="button" onPress={onClose} style={styles.backdrop} />
-      <View style={styles.sheet}>
-        <View style={styles.handle} />
+    <Modal
+      animationType="fade"
+      hardwareAccelerated
+      onRequestClose={onClose}
+      transparent
+      visible={isVisible}
+    >
+      <View style={styles.overlay}>
+        <Pressable accessibilityRole="button" onPress={onClose} style={styles.backdrop} />
+        <View style={styles.sheet}>
+          <View style={styles.handle} />
 
-        <View style={styles.header}>
-          <View style={styles.titleBlock}>
-            <Text style={styles.title}>Saved restaurants</Text>
-            <Text style={styles.subtitle}>Your local Food favourites on this device.</Text>
-          </View>
+          <View style={styles.header}>
+            <View style={styles.titleBlock}>
+              <Text style={styles.title}>Saved restaurants</Text>
+              <Text style={styles.subtitle}>Your local Food favourites on this device.</Text>
+            </View>
 
-          <Pressable
-            accessibilityLabel="Close saved restaurants"
-            accessibilityRole="button"
-            onPress={onClose}
-            style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}>
-            <Text style={styles.closeLabel}>Close</Text>
-          </Pressable>
-        </View>
-
-        {isSheetLoading ? (
-          <View style={styles.stateContainer}>
-            <ActivityIndicator color={accentColor} size="large" />
-            <Text style={styles.stateText}>Loading saved restaurants...</Text>
-          </View>
-        ) : null}
-
-        {!isSheetLoading && errorMessage ? (
-          <View style={styles.stateContainer}>
-            <Text style={styles.errorTitle}>Unable to load saved restaurants</Text>
-            <Text style={styles.stateText}>{errorMessage}</Text>
             <Pressable
+              accessibilityLabel="Close saved restaurants"
               accessibilityRole="button"
-              onPress={loadSavedPlaces}
-              style={({ pressed }) => [
-                styles.retryButton,
-                { backgroundColor: accentColor },
-                pressed && styles.pressed,
-              ]}>
-              <Text style={styles.primaryButtonLabel}>Retry</Text>
+              onPress={onClose}
+              style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
+            >
+              <Text style={styles.closeLabel}>X</Text>
             </Pressable>
           </View>
-        ) : null}
 
-        {!isSheetLoading && !errorMessage && savedPlaces.length === 0 ? (
-          <View style={styles.stateContainer}>
-            <Text style={styles.emptyIcon}>☆</Text>
-            <Text style={styles.emptyTitle}>No saved restaurants yet</Text>
-            <Text style={styles.stateText}>
-              Tap the bookmark on a restaurant to keep it here for later.
-            </Text>
-          </View>
-        ) : null}
+          {isSheetLoading ? (
+            <View style={styles.stateContainer}>
+              <ActivityIndicator color={accentColor} size="large" />
+              <Text style={styles.stateText}>Loading saved restaurants...</Text>
+            </View>
+          ) : null}
 
-        {!isSheetLoading && !errorMessage && savedPlaces.length > 0 ? (
-          <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
-            {savedPlaces.map((place) => (
+          {!isSheetLoading && errorMessage ? (
+            <View style={styles.stateContainer}>
+              <Text style={styles.errorTitle}>Unable to load saved restaurants</Text>
+              <Text style={styles.stateText}>{errorMessage}</Text>
               <Pressable
                 accessibilityRole="button"
-                key={place.id}
-                onPress={() => onSelectPlace(place)}
+                onPress={loadSavedPlaces}
                 style={({ pressed }) => [
-                  styles.card,
-                  { borderLeftColor: accentColor },
+                  styles.retryButton,
+                  { backgroundColor: accentColor },
                   pressed && styles.pressed,
-                ]}>
-                <Text style={styles.cardTitle}>{place.name}</Text>
-                <Text style={styles.cardMeta}>
-                  {[place.cuisine ?? place.category, place.suburb].filter(Boolean).join(' | ')}
-                </Text>
-                <Text numberOfLines={1} style={styles.cardAddress}>
-                  {place.address}
-                </Text>
+                ]}
+              >
+                <Text style={styles.primaryButtonLabel}>Retry</Text>
               </Pressable>
-            ))}
-          </ScrollView>
-        ) : null}
+            </View>
+          ) : null}
+
+          {!isSheetLoading && !errorMessage && savedPlaces.length === 0 ? (
+            <View style={styles.stateContainer}>
+              <Text style={styles.emptyIcon}>☆</Text>
+              <Text style={styles.emptyTitle}>No saved restaurants yet</Text>
+              <Text style={styles.stateText}>
+                Tap the bookmark on a restaurant to keep it here for later.
+              </Text>
+            </View>
+          ) : null}
+
+          {!isSheetLoading && !errorMessage && savedPlaces.length > 0 ? (
+            <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
+              {savedPlaces.map((place) => (
+                <Pressable
+                  accessibilityRole="button"
+                  key={place.id}
+                  onPress={() => onSelectPlace(place)}
+                  style={({ pressed }) => [
+                    styles.card,
+                    { borderLeftColor: accentColor },
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Text style={styles.cardTitle}>{place.name}</Text>
+                  <Text style={styles.cardMeta}>
+                    {[place.cuisine ?? place.category, place.suburb].filter(Boolean).join(' | ')}
+                  </Text>
+                  <Text numberOfLines={1} style={styles.cardAddress}>
+                    {place.address}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          ) : null}
+        </View>
       </View>
-    </View>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
   overlay: {
-    bottom: 0,
+    flex: 1,
     justifyContent: 'flex-end',
-    left: 0,
-    position: 'absolute',
-    right: 0,
-    top: 0,
-    pointerEvents: 'box-none',
+    zIndex: 500,
+    elevation: 500,
   },
   backdrop: {
-    backgroundColor: 'rgba(21, 25, 34, 0.28)',
+    backgroundColor: 'rgba(21, 25, 34, 0.34)',
     bottom: 0,
     left: 0,
     position: 'absolute',
@@ -178,7 +185,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -8 },
     shadowOpacity: 0.18,
     shadowRadius: 20,
-    elevation: 8,
+    zIndex: 500,
+    elevation: 500,
   },
   handle: {
     width: 46,
@@ -208,16 +216,16 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   closeButton: {
-    minHeight: 38,
-    borderRadius: 8,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: '#EEF1F5',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 12,
   },
   closeLabel: {
     color: '#3F4652',
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '900',
   },
   list: {

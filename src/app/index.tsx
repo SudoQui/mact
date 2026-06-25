@@ -1,6 +1,6 @@
 import * as Location from 'expo-location';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, BackHandler, Easing, Keyboard, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ActiveFoodFilters } from '@/components/home/ActiveFoodFilters';
@@ -42,6 +42,7 @@ export default function HomeScreen() {
   const [isNearMeLoading, setIsNearMeLoading] = useState(false);
   const [isMapExpanded, setIsMapExpanded] = useState(false);
   const [selectedFoodPlace, setSelectedFoodPlace] = useState<Place | null>(null);
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [isSavedSheetOpen, setIsSavedSheetOpen] = useState(false);
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
@@ -93,6 +94,14 @@ export default function HomeScreen() {
       easing: Easing.out(Easing.cubic),
       useNativeDriver: false,
     }).start();
+
+    if (nextMode !== 'food') {
+      setIsSavedSheetOpen(false);
+      setIsFilterSheetOpen(false);
+      setSelectedFoodPlace(null);
+      setIsSearchFocused(false);
+      Keyboard.dismiss();
+    }
 
     setSelectedMode(nextMode);
   }, [modeProgress, selectedMode]);
@@ -205,6 +214,55 @@ export default function HomeScreen() {
     setFoodFilters(EMPTY_FOOD_FILTERS);
   }, []);
 
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (isFoodMode && isSavedSheetOpen) {
+        setIsSavedSheetOpen(false);
+        return true;
+      }
+
+      if (isFoodMode && isFilterSheetOpen) {
+        setIsFilterSheetOpen(false);
+        return true;
+      }
+
+      if (isFoodMode && selectedFoodPlace) {
+        setSelectedFoodPlace(null);
+        return true;
+      }
+
+      if (isFoodMode && isSearchFocused) {
+        Keyboard.dismiss();
+        setIsSearchFocused(false);
+        return true;
+      }
+
+      if (isFoodMode && isMapExpanded) {
+        setIsMapExpanded(false);
+        return true;
+      }
+
+      if (!isFoodMode) {
+        handleSelectMode('food');
+        return true;
+      }
+
+      return false;
+    });
+
+    return () => subscription.remove();
+  }, [
+    handleSelectMode,
+    isFilterSheetOpen,
+    isFoodMode,
+    isMapExpanded,
+    isSavedSheetOpen,
+    isSearchFocused,
+    selectedFoodPlace,
+  ]);
+
   const results = useMemo<HomeResult[]>(
     () => (isNearMeActive ? nearbyPlaces : foodPlaces).map((item) => ({ kind: 'place', item })),
     [foodPlaces, isNearMeActive, nearbyPlaces]
@@ -283,7 +341,9 @@ export default function HomeScreen() {
               <>
                 <HomeSearchBar
                   accentColor={foodMode.color}
+                  onBlur={() => setIsSearchFocused(false)}
                   onChangeText={setSearchQuery}
+                  onFocus={() => setIsSearchFocused(true)}
                   value={searchQuery}
                 />
                 <CategoryChips
@@ -396,14 +456,6 @@ export default function HomeScreen() {
                 />
               ) : null}
 
-              <FoodFilterSheet
-                accentColor={foodMode.color}
-                filters={foodFilters}
-                isVisible={isFoodMode && isFilterSheetOpen}
-                onClearAll={handleClearFoodFilters}
-                onClose={() => setIsFilterSheetOpen(false)}
-                onToggleFilter={handleToggleFoodFilter}
-              />
             </View>
 
             {constructionCopy ? (
@@ -438,6 +490,14 @@ export default function HomeScreen() {
         onSavedChange={refreshSavedPlaceIds}
         onToggleSavedPlace={handleToggleSavedPlace}
         place={isFoodMode ? selectedFoodPlace : null}
+      />
+      <FoodFilterSheet
+        accentColor={foodMode.color}
+        filters={foodFilters}
+        isVisible={isFoodMode && isFilterSheetOpen}
+        onClearAll={handleClearFoodFilters}
+        onClose={() => setIsFilterSheetOpen(false)}
+        onToggleFilter={handleToggleFoodFilter}
       />
       <SavedRestaurantsSheet
         accentColor={foodMode.color}
@@ -512,14 +572,21 @@ function getConstructionCopy(mode: MactMode) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, position: 'relative' },
-  content: { flex: 1, gap: 10, zIndex: 1 },
+  content: { flex: 1, gap: 10, zIndex: 0, elevation: 0 },
   body: { flex: 1, gap: 10, minHeight: 0 },
   header: { gap: 7 },
   brandRow: { flexDirection: 'row', alignItems: 'baseline', gap: 10 },
   brand: { fontSize: 18, fontWeight: '900', letterSpacing: 0.5 },
   title: { flex: 1, color: '#222724', fontSize: 17, fontWeight: '800' },
   modePages: { flex: 1, minHeight: 0, position: 'relative' },
-  modePage: { ...StyleSheet.absoluteFillObject, minHeight: 0 },
+  modePage: {
+    bottom: 0,
+    left: 0,
+    minHeight: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
+  },
   activeModePage: { opacity: 1, zIndex: 2 },
   inactiveModePage: { opacity: 0, zIndex: 0 },
   discovery: { flex: 1, minHeight: 0 },
@@ -550,7 +617,8 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    elevation: 4,
+    zIndex: 50,
+    elevation: 50,
   },
   noticeText: { flex: 1, color: '#513B33', fontSize: 13, fontWeight: '800' },
   clearLabel: { fontSize: 13, fontWeight: '900', paddingVertical: 4 },

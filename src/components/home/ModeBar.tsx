@@ -92,6 +92,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 18,
     elevation: 5,
+    zIndex: 50,
     overflow: 'hidden',
   },
   indicator: {

@@ -81,6 +81,7 @@ const styles = StyleSheet.create({
     gap: 8,
     alignItems: 'flex-end',
     zIndex: 50,
+    elevation: 50,
   },
   nearMeButton: {
     minHeight: 44,

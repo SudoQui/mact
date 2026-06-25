@@ -7,7 +7,6 @@
     "icon": "./assets/images/icon.png",
     "scheme": "mact",
     "userInterfaceStyle": "automatic",
-    
     "ios": {
       "icon": "./assets/expo.icon"
     },
@@ -18,7 +17,8 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.sudoqui.MACT"
     },
     "web": {
       "output": "static",
@@ -37,7 +37,8 @@
         }
       ],
       "expo-sqlite",
-      "@maplibre/maplibre-react-native"
+      "@maplibre/maplibre-react-native",
+      "expo-image"
     ],
     "experiments": {
       "typedRoutes": true,

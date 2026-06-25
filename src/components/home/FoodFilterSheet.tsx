@@ -136,13 +136,22 @@ export function FoodFilterSheet({
 
 const styles = StyleSheet.create({
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    bottom: 0,
     justifyContent: 'flex-end',
-    zIndex: 90,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    zIndex: 400,
+    elevation: 400,
   },
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(25, 22, 19, 0.28)',
+    bottom: 0,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
   },
   sheet: {
     borderTopLeftRadius: 18,
@@ -156,7 +165,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -8 },
     shadowOpacity: 0.16,
     shadowRadius: 18,
-    elevation: 12,
+    zIndex: 400,
+    elevation: 400,
   },
   handle: {
     width: 44,

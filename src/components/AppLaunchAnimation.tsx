@@ -177,8 +177,12 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   background: {
-    ...StyleSheet.absoluteFillObject,
     backgroundColor: CREAM,
+    bottom: 0,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
   },
   logoFrame: {
     alignItems: 'center',

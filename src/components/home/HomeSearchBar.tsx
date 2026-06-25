@@ -2,17 +2,27 @@ import { StyleSheet, TextInput, View } from 'react-native';
 
 type HomeSearchBarProps = {
   accentColor: string;
-  value: string;
   onChangeText: (value: string) => void;
+  onBlur?: () => void;
+  onFocus?: () => void;
+  value: string;
 };
 
-export function HomeSearchBar({ accentColor, value, onChangeText }: HomeSearchBarProps) {
+export function HomeSearchBar({
+  accentColor,
+  onBlur,
+  onChangeText,
+  onFocus,
+  value,
+}: HomeSearchBarProps) {
   return (
     <View style={[styles.container, { borderColor: accentColor }]}>
       <TextInput
         autoCapitalize="none"
         autoCorrect={false}
+        onBlur={onBlur}
         onChangeText={onChangeText}
+        onFocus={onFocus}
         placeholder="Search restaurants, cuisines, suburbs"
         placeholderTextColor="#7B7F87"
         returnKeyType="search"

@@ -369,8 +369,12 @@ const styles = StyleSheet.create({
   expandedMapWrapper: { flex: 1, height: undefined },
   map: { flex: 1 },
   mapTint: {
-    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(255, 249, 240, 0.06)',
+    bottom: 0,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
   },
   restaurantMarker: {
     width: 36,
@@ -398,6 +402,8 @@ const styles = StyleSheet.create({
     bottom: 10,
     flexDirection: 'row',
     gap: 8,
+    zIndex: 50,
+    elevation: 50,
   },
   children: { flex: 1, minHeight: 0 },
 });

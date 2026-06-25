@@ -375,6 +375,7 @@ const styles = StyleSheet.create({
     gap: 10,
     alignItems: 'flex-start',
     zIndex: 50,
+    elevation: 50,
   },
   controlButton: {
     width: 40,

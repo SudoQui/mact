@@ -58,6 +58,7 @@ const DEFAULT_ZOOM = 11;
 const USER_ZOOM = 13;
 const SELECTED_ZOOM = 14;
 const FIT_PADDING = 48;
+const SEARCH_FIT_PADDING = 64;
 const INITIAL_VIEW_STATE = { center: CANBERRA_CENTER, zoom: DEFAULT_ZOOM };
 const ATTRIBUTION_POSITION = { bottom: 8, left: 8 } as const;
 const COMPASS_POSITION = { top: 12, left: 12 } as const;
@@ -88,11 +89,11 @@ export const RealFoodMap = memo(function RealFoodMap({
 }: RealFoodMapProps) {
   const cameraRef = useRef<CameraRef>(null);
   const hasSetInitialCameraRef = useRef(false);
-  const lastSelectedPlaceIdRef = useRef<string | null>(null);
+  const lastSelectedCameraKeyRef = useRef<string | null>(null);
   const lastNearMeCameraKeyRef = useRef<string | null>(null);
   const lastSearchCameraQueryRef = useRef<string | null>(null);
   const { height: screenHeight } = useWindowDimensions();
-  const splitMapHeight = Math.round(screenHeight * 0.4);
+  const splitMapHeight = Math.round(screenHeight * 0.46);
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
 
   const foodPlaces = useMemo(
@@ -134,25 +135,26 @@ export const RealFoodMap = memo(function RealFoodMap({
 
   useEffect(() => {
     if (!selectedPlace) {
-      lastSelectedPlaceIdRef.current = null;
+      lastSelectedCameraKeyRef.current = null;
       return;
     }
 
-    if (lastSelectedPlaceIdRef.current === selectedPlace.id) return;
+    const cameraKey = `${selectedPlace.id}:${isExpanded ? 'expanded' : 'split'}`;
+    if (lastSelectedCameraKeyRef.current === cameraKey) return;
 
-    lastSelectedPlaceIdRef.current = selectedPlace.id;
+    lastSelectedCameraKeyRef.current = cameraKey;
     cameraRef.current?.easeTo({
       center: [selectedPlace.longitude, selectedPlace.latitude],
       zoom: SELECTED_ZOOM,
       padding: {
         top: 30,
         right: 20,
-        bottom: isExpanded ? Math.round(screenHeight * 0.45) : 110,
+        bottom: isExpanded ? Math.round(screenHeight * 0.46) : Math.round(splitMapHeight * 0.34),
         left: 20,
       },
       duration: 650,
     });
-  }, [isExpanded, screenHeight, selectedPlace]);
+  }, [isExpanded, screenHeight, selectedPlace, splitMapHeight]);
 
   useEffect(() => {
     if (!nearMeActive || !userLocation) {
@@ -171,22 +173,43 @@ export const RealFoodMap = memo(function RealFoodMap({
     });
   }, [nearMeActive, userLocation]);
 
+  const fitPlaces = useCallback((placesToFit: Place[], padding: number) => {
+    const longitudes = placesToFit.map((place) => place.longitude);
+    const latitudes = placesToFit.map((place) => place.latitude);
+    cameraRef.current?.fitBounds(
+      [Math.min(...longitudes), Math.min(...latitudes), Math.max(...longitudes), Math.max(...latitudes)],
+      {
+        padding: { top: padding, right: padding, bottom: padding, left: padding },
+        duration: 650,
+      }
+    );
+  }, []);
+
   useEffect(() => {
     if (!normalizedSearchQuery) {
       lastSearchCameraQueryRef.current = null;
       return;
     }
 
-    if (selectedPlace || foodPlaces.length !== 1) return;
     if (lastSearchCameraQueryRef.current === normalizedSearchQuery) return;
 
     lastSearchCameraQueryRef.current = normalizedSearchQuery;
-    cameraRef.current?.easeTo({
-      center: [foodPlaces[0].longitude, foodPlaces[0].latitude],
-      zoom: USER_ZOOM,
-      duration: 550,
-    });
-  }, [foodPlaces, normalizedSearchQuery, selectedPlace]);
+
+    if (selectedPlace) return;
+
+    if (foodPlaces.length === 1) {
+      cameraRef.current?.easeTo({
+        center: [foodPlaces[0].longitude, foodPlaces[0].latitude],
+        zoom: USER_ZOOM,
+        duration: 550,
+      });
+      return;
+    }
+
+    if (foodPlaces.length > 1) {
+      fitPlaces(foodPlaces, SEARCH_FIT_PADDING);
+    }
+  }, [fitPlaces, foodPlaces, normalizedSearchQuery, selectedPlace]);
 
   const fitRestaurants = useCallback(() => {
     if (foodPlaces.length === 0) return;
@@ -200,16 +223,8 @@ export const RealFoodMap = memo(function RealFoodMap({
       return;
     }
 
-    const longitudes = foodPlaces.map((place) => place.longitude);
-    const latitudes = foodPlaces.map((place) => place.latitude);
-    cameraRef.current?.fitBounds(
-      [Math.min(...longitudes), Math.min(...latitudes), Math.max(...longitudes), Math.max(...latitudes)],
-      {
-        padding: { top: FIT_PADDING, right: FIT_PADDING, bottom: FIT_PADDING, left: FIT_PADDING },
-        duration: 650,
-      }
-    );
-  }, [foodPlaces]);
+    fitPlaces(foodPlaces, FIT_PADDING);
+  }, [fitPlaces, foodPlaces]);
 
   const handleRegionDidChange = useCallback(
     (event: NativeSyntheticEvent<ViewStateChangeEvent>) => {
@@ -220,7 +235,6 @@ export const RealFoodMap = memo(function RealFoodMap({
 
   return (
     <View style={styles.container}>
-      {/* TODO: Add a safer fullscreen transition after native map layout is stable across devices. */}
       <View
         style={[
           styles.mapWrapper,
@@ -267,6 +281,7 @@ export const RealFoodMap = memo(function RealFoodMap({
         {/* TODO: Replace this tint and raster basemap with a cleaner production vector style. */}
         <View pointerEvents="none" style={styles.mapTint} />
 
+        {!selectedPlace ? (
         <View style={styles.mapActions}>
           <SymbolIconButton
             accessibilityLabel="Fit visible restaurants"
@@ -299,6 +314,7 @@ export const RealFoodMap = memo(function RealFoodMap({
             size={21}
           />
         </View>
+        ) : null}
       </View>
 
       {!isExpanded ? (
@@ -362,11 +378,11 @@ const styles = StyleSheet.create({
   container: { flex: 1, gap: 10 },
   mapWrapper: {
     minHeight: 240,
-    borderRadius: 18,
+    borderRadius: 16,
     overflow: 'hidden',
     backgroundColor: '#E7ECE8',
   },
-  expandedMapWrapper: { flex: 1, height: undefined },
+  expandedMapWrapper: { flex: 1, height: undefined, borderRadius: 12 },
   map: { flex: 1 },
   mapTint: {
     backgroundColor: 'rgba(255, 249, 240, 0.06)',

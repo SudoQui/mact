@@ -107,6 +107,8 @@ export default function HomeScreen() {
   }, [modeProgress, selectedMode]);
 
   const handlePressFoodPlace = useCallback((place: Place) => {
+    Keyboard.dismiss();
+    setIsSearchFocused(false);
     setSelectedFoodPlace(place);
   }, []);
 
@@ -331,11 +333,14 @@ export default function HomeScreen() {
       >
         <View style={styles.body}>
           {!isFoodMode || !isMapExpanded ? <View style={styles.header}>
-            <View style={styles.brandRow}>
-              <Text style={[styles.brand, { color: mode.color }]}>MACT</Text>
-              <Text numberOfLines={1} style={styles.title}>
-                {isFoodMode ? 'Halal food in Canberra' : mode.title}
-              </Text>
+            <View style={styles.headerTop}>
+              <View style={styles.brandRow}>
+                <Text style={[styles.brand, { color: mode.color }]}>MACT</Text>
+                <Text numberOfLines={1} style={styles.title}>
+                  {isFoodMode ? 'Halal food in Canberra' : mode.title}
+                </Text>
+              </View>
+              {isFoodMode ? <Text style={styles.sudoLabsBrand}>SudoLabs</Text> : null}
             </View>
             {isFoodMode ? (
               <>
@@ -572,12 +577,19 @@ function getConstructionCopy(mode: MactMode) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, position: 'relative' },
-  content: { flex: 1, gap: 10, zIndex: 0, elevation: 0 },
-  body: { flex: 1, gap: 10, minHeight: 0 },
+  content: { flex: 1, gap: 8, zIndex: 0, elevation: 0 },
+  body: { flex: 1, gap: 8, minHeight: 0 },
   header: { gap: 7 },
-  brandRow: { flexDirection: 'row', alignItems: 'baseline', gap: 10 },
+  headerTop: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 },
+  brandRow: { flex: 1, flexDirection: 'row', alignItems: 'baseline', gap: 10, minWidth: 0 },
   brand: { fontSize: 18, fontWeight: '900', letterSpacing: 0.5 },
   title: { flex: 1, color: '#222724', fontSize: 17, fontWeight: '800' },
+  sudoLabsBrand: {
+    color: '#7B6257',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
   modePages: { flex: 1, minHeight: 0, position: 'relative' },
   modePage: {
     bottom: 0,

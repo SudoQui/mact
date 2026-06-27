@@ -4,11 +4,14 @@ import { useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { SymbolIconButton } from '@/components/home/SymbolIconButton';
+import type { Place } from '@/services/placesService';
 
 type PlaceholderMapProps = {
   accentColor: string;
   children: ReactNode;
   results?: HomeResult[];
+  selectedPlace?: Place | null;
+  userLocation?: { latitude: number; longitude: number } | null;
   onPressPlace?: (placeId: string) => void;
   onMapDrag?: () => void;
   onResetView?: () => void;
@@ -41,6 +44,8 @@ export function PlaceholderMap({
   accentColor,
   children,
   results = [],
+  selectedPlace,
+  userLocation,
   onPressPlace,
   onMapDrag,
   onResetView,
@@ -61,9 +66,16 @@ export function PlaceholderMap({
         .filter((item): item is Extract<HomeResult, { kind: 'place' }> => item.kind === 'place')
         .map((result) => ({
           id: result.item.id,
+          category: result.item.category,
+          isSelected: selectedPlace?.id === result.item.id,
           point: normalizePoint(result.item.latitude, result.item.longitude),
         })),
-    [results]
+    [results, selectedPlace?.id]
+  );
+
+  const userPoint = useMemo(
+    () => userLocation ? normalizePoint(userLocation.latitude, userLocation.longitude) : null,
+    [userLocation]
   );
 
   const applyZoom = (nextScale: number) => {
@@ -153,7 +165,6 @@ export function PlaceholderMap({
 
   return (
     <View style={styles.container}>
-      {/* TODO: Add a safer fullscreen transition after the fallback map layout is stable. */}
       <View
         style={styles.mapArea}
         onLayout={(event) => setLayout(event.nativeEvent.layout)}>
@@ -183,14 +194,32 @@ export function PlaceholderMap({
               onPress={() => onPressPlace?.(place.id)}
               style={[
                 styles.pin,
+                place.isSelected && styles.selectedPin,
                 {
                   backgroundColor: accentColor,
                   left: `${Math.max(2, Math.min(98, place.point.x * 100))}%`,
                   top: `${Math.max(2, Math.min(98, place.point.y * 100))}%`,
                 },
-              ]}
-            />
+              ]}>
+              <Text style={[styles.pinLabel, place.isSelected && styles.selectedPinLabel]}>
+                {getCategoryPinLabel(place.category)}
+              </Text>
+            </Pressable>
           ))}
+
+          {userPoint ? (
+            <View
+              pointerEvents="none"
+              style={[
+                styles.userLocationMarker,
+                {
+                  left: `${Math.max(2, Math.min(98, userPoint.x * 100))}%`,
+                  top: `${Math.max(2, Math.min(98, userPoint.y * 100))}%`,
+                },
+              ]}>
+              <View style={styles.userLocationDot} />
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.controlBar}>
@@ -252,6 +281,15 @@ export function PlaceholderMap({
       ) : null}
     </View>
   );
+}
+
+function getCategoryPinLabel(category: string) {
+  const normalized = category.toLowerCase();
+  if (normalized.includes('cafe') || normalized.includes('coffee')) return 'C';
+  if (normalized.includes('butcher')) return 'B';
+  if (normalized.includes('grocery') || normalized.includes('grocer')) return 'G';
+  if (normalized.includes('dessert') || normalized.includes('sweet')) return 'D';
+  return 'R';
 }
 
 const styles = StyleSheet.create({
@@ -357,16 +395,50 @@ const styles = StyleSheet.create({
   },
   pin: {
     position: 'absolute',
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    width: 34,
+    height: 34,
+    marginLeft: -17,
+    marginTop: -17,
+    borderRadius: 17,
     borderWidth: 2,
     borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.24,
     shadowRadius: 4,
     elevation: 5,
+  },
+  selectedPin: {
+    width: 44,
+    height: 44,
+    marginLeft: -22,
+    marginTop: -22,
+    borderRadius: 22,
+    borderWidth: 4,
+    elevation: 8,
+  },
+  pinLabel: { color: '#FFFFFF', fontSize: 13, fontWeight: '900' },
+  selectedPinLabel: { fontSize: 16 },
+  userLocationMarker: {
+    position: 'absolute',
+    width: 28,
+    height: 28,
+    marginLeft: -14,
+    marginTop: -14,
+    borderRadius: 14,
+    backgroundColor: 'rgba(40, 120, 208, 0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  userLocationDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#2878D0',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
   },
   controlBar: {
     position: 'absolute',

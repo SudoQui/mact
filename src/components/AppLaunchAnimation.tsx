@@ -161,6 +161,7 @@ export function AppLaunchAnimation() {
             </Animated.View>
           </Animated.View>
         </Animated.View>
+        <Text style={styles.poweredBy}>Powered by SudoLabs</Text>
       </Animated.View>
     </Modal>
   );
@@ -231,5 +232,14 @@ const styles = StyleSheet.create({
     height: 4,
     marginTop: -2,
     width: 48,
+  },
+  poweredBy: {
+    bottom: 42,
+    color: 'rgba(7, 84, 63, 0.54)',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0,
+    position: 'absolute',
+    textAlign: 'center',
   },
 });

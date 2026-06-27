@@ -14,6 +14,11 @@ import {
 } from 'react-native';
 
 import { BookmarkButton } from '@/components/home/BookmarkIconButton';
+import {
+  getFoodDetailBadges,
+  getTrustBadgeStyle,
+  type TrustBadge,
+} from '@/components/home/trustBadges';
 import { formatDistance } from '@/lib/distance';
 import { getFoodDetails, type FoodDetails, type Place } from '@/services/placesService';
 
@@ -231,6 +236,11 @@ export function RestaurantDetailSheet({
 
           {!isLoading && !errorMessage && details ? (
             <>
+              <View style={styles.trustBadgeGrid}>
+                {getFoodDetailBadges(details).map((badge) => (
+                  <TrustBadgePill key={badge.key} badge={badge} />
+                ))}
+              </View>
               <View style={styles.checklist}>
                 {buildChecklist(details).map((item) => (
                   <View key={item.label} style={styles.checklistRow}>
@@ -250,6 +260,24 @@ export function RestaurantDetailSheet({
         </ScrollView>
       </View>
     </Animated.View>
+  );
+}
+
+function TrustBadgePill({ badge }: { badge: TrustBadge }) {
+  const colors = getTrustBadgeStyle(badge.tone);
+
+  return (
+    <View
+      style={[
+        styles.trustBadge,
+        {
+          backgroundColor: colors.backgroundColor,
+          borderColor: colors.borderColor,
+        },
+      ]}
+    >
+      <Text style={[styles.trustBadgeText, { color: colors.color }]}>{badge.label}</Text>
+    </View>
   );
 }
 
@@ -292,31 +320,8 @@ function buildChecklist(details: FoodDetails): ChecklistItem[] {
       value: formatText(details.halal_meat_coverage) ||
         (details.meat_provider_confirmed_halal ? 'Confirmed' : 'Needs review'),
     },
-    { label: 'Halal certified', value: formatBoolean(details.halal_certified) },
     { label: 'Hand slaughtered', value: formatText(details.hand_slaughtered) },
-    formatPorkChecklist(details),
-    formatAlcoholChecklist(details),
-    { label: 'Cross contamination risk', value: formatText(details.cross_contamination_risk) },
-    { label: 'Verification source', value: formatText(details.verification_source) },
-    { label: 'Confidence level', value: formatText(details.confidence_level) },
-    { label: 'Details last updated', value: formatDate(details.details_last_updated) },
   ];
-}
-
-function formatAlcoholChecklist(details: FoodDetails): ChecklistItem {
-  if (details.alcohol_status === 'none_served') return { label: 'Alcohol status', value: 'None served' };
-  if (details.alcohol_status === 'served') return { label: 'Alcohol status', value: 'Served' };
-  return { label: 'Alcohol status', value: 'Needs review' };
-}
-
-function formatPorkChecklist(details: FoodDetails): ChecklistItem {
-  if (details.pork_status === 'none_served') return { label: 'Pork status', value: 'None served' };
-  if (details.pork_status === 'served') return { label: 'Pork status', value: 'Served' };
-  return { label: 'Pork status', value: 'Needs review' };
-}
-
-function formatBoolean(value: boolean) {
-  return value ? 'Yes' : 'No';
 }
 
 function formatText(value: string | null | undefined) {
@@ -325,13 +330,6 @@ function formatText(value: string | null | undefined) {
     .split('_')
     .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
     .join(' ');
-}
-
-function formatDate(value: string | null) {
-  if (!value) return 'Needs review';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 function openDirections(place: Place) {
@@ -407,6 +405,18 @@ const styles = StyleSheet.create({
   actionLabel: { fontSize: 13, fontWeight: '900' },
   scrollArea: { flexShrink: 1 },
   content: { gap: 10, paddingTop: 12, paddingBottom: 18 },
+  trustBadgeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 7,
+  },
+  trustBadge: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  trustBadgeText: { fontSize: 11, fontWeight: '900' },
   checklist: { gap: 6 },
   checklistRow: {
     minHeight: 40,

@@ -34,6 +34,8 @@ export function MockFoodMap({
     <PlaceholderMap
       accentColor={accentColor}
       results={places}
+      selectedPlace={selectedPlace}
+      userLocation={userLocation}
       onPressPlace={onSelectPlace}
       onMapDrag={onMapInteraction}
       onResetView={onMapInteraction}

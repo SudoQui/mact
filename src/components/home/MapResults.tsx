@@ -1,6 +1,11 @@
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { BookmarkButton } from '@/components/home/BookmarkIconButton';
+import {
+  getFoodCardBadges,
+  getTrustBadgeStyle,
+  type TrustBadge,
+} from '@/components/home/trustBadges';
 import { formatDistance } from '@/lib/distance';
 import type { CommunityEvent } from '@/services/eventsService';
 import type { Place } from '@/services/placesService';
@@ -158,7 +163,7 @@ function PlaceCard({
   const detail = [place.cuisine ?? place.category, place.suburb].filter(Boolean).join(' - ');
   const distance = formatDistance(place.distance_meters);
   const confidence = formatConfidence(place.confidence_level);
-  const tags = getPlaceTags(place);
+  const trustBadges = getFoodCardBadges(place);
   const card = (
     <>
       <View style={styles.cardHeader}>
@@ -184,10 +189,8 @@ function PlaceCard({
         <View style={[styles.confidenceChip, { backgroundColor: `${accentColor}12` }]}>
           <Text style={[styles.confidenceText, { color: accentColor }]}>{confidence}</Text>
         </View>
-        {tags.map((tag) => (
-          <View key={tag} style={styles.infoTag}>
-            <Text style={styles.infoTagText}>{tag}</Text>
-          </View>
+        {trustBadges.map((badge) => (
+          <TrustBadgePill key={badge.key} badge={badge} />
         ))}
       </View>
     </>
@@ -218,16 +221,22 @@ function formatConfidence(value: Place['confidence_level']) {
   return `${value.charAt(0).toUpperCase()}${value.slice(1)} confidence`;
 }
 
-function getPlaceTags(place: Place) {
-  const details = place.food_details;
-  if (!details) return [];
+function TrustBadgePill({ badge }: { badge: TrustBadge }) {
+  const colors = getTrustBadgeStyle(badge.tone);
 
-  return [
-    details.halal_certified ? 'Certified' : null,
-    details.pork_status === 'none_served' ? 'No pork' : null,
-    details.alcohol_status === 'none_served' ? 'No alcohol' : null,
-    details.confidence_level === 'high' ? 'High confidence' : null,
-  ].filter((tag): tag is string => Boolean(tag));
+  return (
+    <View
+      style={[
+        styles.infoTag,
+        {
+          backgroundColor: colors.backgroundColor,
+          borderColor: colors.borderColor,
+        },
+      ]}
+    >
+      <Text style={[styles.infoTagText, { color: colors.color }]}>{badge.label}</Text>
+    </View>
+  );
 }
 
 type EventCardProps = {
@@ -359,12 +368,11 @@ const styles = StyleSheet.create({
   },
   infoTag: {
     borderRadius: 999,
-    backgroundColor: '#F4F1EB',
+    borderWidth: 1,
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
   infoTagText: {
-    color: '#4E5651',
     fontSize: 11,
     fontWeight: '900',
   },

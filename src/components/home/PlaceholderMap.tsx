@@ -1,8 +1,9 @@
 import type { HomeResult } from '@/components/home/MapResults';
 import type { ReactNode } from 'react';
 import { useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
+import { formatMarkerName, getFoodCategoryVisual } from '@/components/home/categoryVisuals';
 import { SymbolIconButton } from '@/components/home/SymbolIconButton';
 import type { Place } from '@/services/placesService';
 
@@ -31,6 +32,7 @@ const MIN_SCALE = 0.8;
 const MAX_SCALE = 3.0;
 const ZOOM_STEP = 1.2;
 const FIT_PADDING = 0.14;
+const MARKER_NAME_SCALE = 2.1;
 
 function normalizePoint(lat: number, lng: number) {
   const { northLat, southLat, westLng, eastLng } = CANBERRA_BOUNDS;
@@ -41,7 +43,6 @@ function normalizePoint(lat: number, lng: number) {
 }
 
 export function PlaceholderMap({
-  accentColor,
   children,
   results = [],
   selectedPlace,
@@ -59,6 +60,8 @@ export function PlaceholderMap({
   const dragOriginRef = useRef<{ x: number; y: number } | null>(null);
   const dragOffsetRef = useRef({ x: 0, y: 0 });
   const hasDraggedRef = useRef(false);
+  const { height: screenHeight } = useWindowDimensions();
+  const splitMapHeight = Math.round(Math.min(280, Math.max(220, screenHeight * 0.32)));
 
   const placePoints = useMemo(
     () =>
@@ -66,6 +69,7 @@ export function PlaceholderMap({
         .filter((item): item is Extract<HomeResult, { kind: 'place' }> => item.kind === 'place')
         .map((result) => ({
           id: result.item.id,
+          name: result.item.name,
           category: result.item.category,
           isSelected: selectedPlace?.id === result.item.id,
           point: normalizePoint(result.item.latitude, result.item.longitude),
@@ -166,7 +170,7 @@ export function PlaceholderMap({
   return (
     <View style={styles.container}>
       <View
-        style={styles.mapArea}
+        style={[styles.mapArea, isExpanded ? styles.expandedMapArea : { height: splitMapHeight }]}
         onLayout={(event) => setLayout(event.nativeEvent.layout)}>
         <View
           style={[
@@ -187,25 +191,35 @@ export function PlaceholderMap({
           <View style={styles.roadH1} />
           <View style={styles.roadV1} />
 
-          {placePoints.map((place) => (
-            <Pressable
-              key={place.id}
-              accessibilityRole="button"
-              onPress={() => onPressPlace?.(place.id)}
-              style={[
-                styles.pin,
-                place.isSelected && styles.selectedPin,
-                {
-                  backgroundColor: accentColor,
-                  left: `${Math.max(2, Math.min(98, place.point.x * 100))}%`,
-                  top: `${Math.max(2, Math.min(98, place.point.y * 100))}%`,
-                },
-              ]}>
-              <Text style={[styles.pinLabel, place.isSelected && styles.selectedPinLabel]}>
-                {getCategoryPinLabel(place.category)}
-              </Text>
-            </Pressable>
-          ))}
+          {placePoints.map((place) => {
+            const categoryVisual = getFoodCategoryVisual(place.category);
+            const shouldShowName = place.isSelected || scale >= MARKER_NAME_SCALE;
+            const label = shouldShowName ? formatMarkerName(place.name) : categoryVisual.pinLabel;
+
+            return (
+              <Pressable
+                key={place.id}
+                accessibilityRole="button"
+                onPress={() => onPressPlace?.(place.id)}
+                style={[
+                  styles.pin,
+                  shouldShowName ? styles.namePin : styles.initialPin,
+                  place.isSelected && styles.selectedPin,
+                  {
+                    backgroundColor: categoryVisual.color,
+                    left: `${Math.max(2, Math.min(98, place.point.x * 100))}%`,
+                    top: `${Math.max(2, Math.min(98, place.point.y * 100))}%`,
+                  },
+                ]}>
+                <Text
+                  numberOfLines={1}
+                  style={[styles.pinLabel, place.isSelected && styles.selectedPinLabel]}
+                >
+                  {label}
+                </Text>
+              </Pressable>
+            );
+          })}
 
           {userPoint ? (
             <View
@@ -283,15 +297,6 @@ export function PlaceholderMap({
   );
 }
 
-function getCategoryPinLabel(category: string) {
-  const normalized = category.toLowerCase();
-  if (normalized.includes('cafe') || normalized.includes('coffee')) return 'C';
-  if (normalized.includes('butcher')) return 'B';
-  if (normalized.includes('grocery') || normalized.includes('grocer')) return 'G';
-  if (normalized.includes('dessert') || normalized.includes('sweet')) return 'D';
-  return 'R';
-}
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -306,15 +311,17 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   mapArea: {
-    flex: 1,
-    minHeight: 240,
+    minHeight: 220,
     backgroundColor: '#D4E9F7',
     position: 'relative',
     overflow: 'hidden',
   },
+  expandedMapArea: {
+    flex: 1,
+  },
   mapContent: {
     flex: 1,
-    minHeight: 240,
+    minHeight: 220,
     position: 'relative',
   },
   gridOverlay: {
@@ -395,11 +402,8 @@ const styles = StyleSheet.create({
   },
   pin: {
     position: 'absolute',
-    width: 34,
-    height: 34,
     marginLeft: -17,
     marginTop: -17,
-    borderRadius: 17,
     borderWidth: 2,
     borderColor: '#FFFFFF',
     alignItems: 'center',
@@ -410,17 +414,25 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 5,
   },
+  initialPin: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+  },
+  namePin: {
+    minWidth: 56,
+    maxWidth: 148,
+    minHeight: 32,
+    borderRadius: 16,
+    paddingHorizontal: 9,
+  },
   selectedPin: {
-    width: 44,
-    height: 44,
-    marginLeft: -22,
-    marginTop: -22,
-    borderRadius: 22,
     borderWidth: 4,
+    transform: [{ scale: 1.08 }],
     elevation: 8,
   },
-  pinLabel: { color: '#FFFFFF', fontSize: 13, fontWeight: '900' },
-  selectedPinLabel: { fontSize: 16 },
+  pinLabel: { color: '#FFFFFF', fontSize: 12, fontWeight: '900' },
+  selectedPinLabel: { fontSize: 13 },
   userLocationMarker: {
     position: 'absolute',
     width: 28,

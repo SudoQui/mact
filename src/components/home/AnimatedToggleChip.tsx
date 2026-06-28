@@ -10,6 +10,8 @@ import {
 
 type AnimatedToggleChipProps = {
   accentColor: string;
+  inactiveBackgroundColor?: string;
+  inactiveBorderColor?: string;
   label: string;
   onPress: () => void;
   selected: boolean;
@@ -19,6 +21,8 @@ type AnimatedToggleChipProps = {
 
 export function AnimatedToggleChip({
   accentColor,
+  inactiveBackgroundColor = '#FFFFFF',
+  inactiveBorderColor = '#E8DED3',
   label,
   onPress,
   selected,
@@ -48,11 +52,11 @@ export function AnimatedToggleChip({
 
   const backgroundColor = selectionProgress.interpolate({
     inputRange: [0, 1],
-    outputRange: ['#FFFFFF', accentColor],
+    outputRange: [inactiveBackgroundColor, accentColor],
   });
   const borderColor = selectionProgress.interpolate({
     inputRange: [0, 1],
-    outputRange: ['#E8DED3', accentColor],
+    outputRange: [inactiveBorderColor, accentColor],
   });
   const color = selectionProgress.interpolate({
     inputRange: [0, 1],

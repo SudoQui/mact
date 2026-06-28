@@ -10,6 +10,7 @@ import {
 
 import { BookmarkButton } from '@/components/home/BookmarkIconButton';
 import {
+  getConfidenceBadgeConfig,
   getFoodCardBadges,
   getTrustBadgeStyle,
   type TrustBadge,
@@ -187,7 +188,7 @@ function PlaceCard({
 }: PlaceCardProps) {
   const detail = [place.cuisine ?? place.category, place.suburb].filter(Boolean).join(' - ');
   const distance = formatDistance(place.distance_meters);
-  const confidence = formatConfidence(place.confidence_level);
+  const confidenceBadge = getConfidenceBadgeConfig(place.confidence_level);
   const trustBadges = getFoodCardBadges(place);
   const card = (
     <>
@@ -211,9 +212,7 @@ function PlaceCard({
         <Text numberOfLines={1} style={styles.bodyText}>{place.description}</Text>
       ) : null}
       <View style={styles.statusRow}>
-        <View style={[styles.confidenceChip, { backgroundColor: `${accentColor}12` }]}>
-          <Text style={[styles.confidenceText, { color: accentColor }]}>{confidence}</Text>
-        </View>
+        <TrustBadgePill badge={confidenceBadge} />
         {trustBadges.map((badge) => (
           <TrustBadgePill key={badge.key} badge={badge} />
         ))}
@@ -239,11 +238,6 @@ function PlaceCard({
       {card}
     </Pressable>
   );
-}
-
-function formatConfidence(value: Place['confidence_level']) {
-  if (!value) return 'Needs review';
-  return `${value.charAt(0).toUpperCase()}${value.slice(1)} confidence`;
 }
 
 function TrustBadgePill({ badge }: { badge: TrustBadge }) {
@@ -381,15 +375,6 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 6,
     marginTop: 3,
-  },
-  confidenceChip: {
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  confidenceText: {
-    fontSize: 11,
-    fontWeight: '900',
   },
   infoTag: {
     borderRadius: 999,

@@ -74,6 +74,24 @@ export function getTrustBadgeStyle(tone: TrustBadgeTone) {
   return TRUST_BADGE_COLORS[tone];
 }
 
+export function getConfidenceBadgeConfig(
+  confidence: FoodDetails['confidence_level'] | null | undefined
+): TrustBadge {
+  if (confidence === 'high') {
+    return { key: 'confidence', label: 'High confidence', tone: 'green' };
+  }
+
+  if (confidence === 'medium') {
+    return { key: 'confidence', label: 'Medium confidence', tone: 'orange' };
+  }
+
+  if (confidence === 'low') {
+    return { key: 'confidence', label: 'Low confidence', tone: 'red' };
+  }
+
+  return { key: 'confidence', label: 'Confidence unknown', tone: 'neutral' };
+}
+
 function getCertifiedBadge(details: FoodDetails | null | undefined): TrustBadge {
   if (details?.halal_certified === true) {
     return { key: 'certified', label: 'Certified', tone: 'green' };

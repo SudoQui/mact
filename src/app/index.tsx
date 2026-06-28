@@ -16,9 +16,9 @@ import { SavedRestaurantsSheet } from '@/components/home/SavedRestaurantsSheet';
 import { UnderConstructionCard } from '@/components/home/UnderConstructionCard';
 import {
   EMPTY_FOOD_FILTERS,
+  getActiveFoodFilters,
   type FoodFilterId,
   type FoodFilterState,
-  getActiveFoodFilters,
 } from '@/components/home/foodFilters';
 import { getModeConfig, MACT_MODES, type MactMode } from '@/components/home/mactModes';
 import { useFoodPlaces } from '@/hooks/useFoodPlaces';

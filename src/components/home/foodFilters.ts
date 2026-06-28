@@ -32,7 +32,7 @@ export const FOOD_FILTERS = [
   {
     id: 'chickenAndBeefConfirmed',
     label: 'Chicken and beef confirmed',
-    activeLabel: 'Chicken + beef',
+    activeLabel: 'Chicken & beef',
   },
   {
     id: 'savedOnly',

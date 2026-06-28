@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 
 import { BookmarkButton } from '@/components/home/BookmarkIconButton';
+import { formatHalalMeatCoverage } from '@/components/home/halalMeatCoverage';
 import {
   getFoodDetailBadges,
   getTrustBadgeStyle,
@@ -317,8 +318,7 @@ function buildChecklist(details: FoodDetails): ChecklistItem[] {
   return [
     {
       label: 'Halal meat coverage',
-      value: formatText(details.halal_meat_coverage) ||
-        (details.meat_provider_confirmed_halal ? 'Confirmed' : 'Needs review'),
+      value: formatHalalMeatCoverage(details.halal_meat_coverage, { expandedBothLabel: true }),
     },
     { label: 'Hand slaughtered', value: formatText(details.hand_slaughtered) },
   ];

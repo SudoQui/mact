@@ -3,7 +3,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { getPlacesByMode, type Place } from '@/services/placesService';
 
-const FOOD_PLACES_CACHE_KEY = 'mact.foodPlaces.v1';
+const FOOD_PLACES_CACHE_VERSION = 2;
+const FOOD_PLACES_CACHE_KEY = `mact.foodPlaces.v${FOOD_PLACES_CACHE_VERSION}`;
 const FOOD_PLACES_STALE_MS = 12 * 60 * 60 * 1000;
 const FOOD_PLACES_GC_MS = 7 * 24 * 60 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 8000;
@@ -11,6 +12,7 @@ const REQUEST_TIMEOUT_MS = 8000;
 type FoodPlacesCacheRecord = {
   places: Place[];
   updatedAt: number;
+  version: number;
 };
 
 type FoodPlacesState = {
@@ -36,7 +38,7 @@ export function useFoodPlaces() {
   }));
 
   const refreshFoodPlaces = useCallback(async () => {
-    if (!isMountedRef.current) return;
+    if (!isMountedRef.current) return null;
 
     setState((current) => ({
       ...current,
@@ -47,12 +49,12 @@ export function useFoodPlaces() {
 
     try {
       const places = await fetchFoodPlacesOnce();
-      const cacheRecord = { places, updatedAt: Date.now() };
+      const cacheRecord = buildCacheRecord(places);
 
       memoryCache = cacheRecord;
       persistFoodPlaces(cacheRecord);
 
-      if (!isMountedRef.current) return;
+      if (!isMountedRef.current) return places;
 
       setState({
         errorMessage: null,
@@ -61,8 +63,10 @@ export function useFoodPlaces() {
         lastUpdatedAt: cacheRecord.updatedAt,
         places,
       });
+
+      return places;
     } catch {
-      if (!isMountedRef.current) return;
+      if (!isMountedRef.current) return null;
 
       setState((current) => ({
         ...current,
@@ -70,6 +74,8 @@ export function useFoodPlaces() {
         isInitialLoading: false,
         isRefreshing: false,
       }));
+
+      return null;
     }
   }, []);
 
@@ -182,7 +188,19 @@ function isCacheRecord(value: unknown): value is FoodPlacesCacheRecord {
 
   const record = value as FoodPlacesCacheRecord;
 
-  return Array.isArray(record.places) && typeof record.updatedAt === 'number';
+  return (
+    Array.isArray(record.places) &&
+    typeof record.updatedAt === 'number' &&
+    record.version === FOOD_PLACES_CACHE_VERSION
+  );
+}
+
+function buildCacheRecord(places: Place[]): FoodPlacesCacheRecord {
+  return {
+    places,
+    updatedAt: Date.now(),
+    version: FOOD_PLACES_CACHE_VERSION,
+  };
 }
 
 function withTimeout<T>(promise: Promise<T>): Promise<T> {

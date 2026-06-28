@@ -83,6 +83,50 @@ export default function HomeScreen() {
     await restoreNormalFoodResults();
   }, [restoreNormalFoodResults]);
 
+  const handleRefreshFoodData = useCallback(async () => {
+    setNearMeMessage(null);
+    const refreshedFoodPlaces = await refreshFoodPlaces();
+
+    if (!isNearMeActive) {
+      if (
+        refreshedFoodPlaces &&
+        selectedFoodPlace &&
+        !refreshedFoodPlaces.some((place) => place.id === selectedFoodPlace.id)
+      ) {
+        setSelectedFoodPlace(null);
+      }
+      return;
+    }
+
+    if (!userLocation) {
+      setIsNearMeActive(false);
+      setIsBrowsingNearArea(false);
+      setNearbyPlaces([]);
+      return;
+    }
+
+    try {
+      const refreshedNearbyPlaces = await withTimeout(
+        getNearbyPlaces(
+          userLocation.latitude,
+          userLocation.longitude,
+          'food',
+          NEARBY_RADIUS_METERS
+        )
+      );
+      const sortedPlaces = [...refreshedNearbyPlaces].sort(
+        (left, right) => (left.distance_meters ?? 0) - (right.distance_meters ?? 0)
+      );
+
+      setNearbyPlaces(sortedPlaces);
+      if (selectedFoodPlace && !sortedPlaces.some((place) => place.id === selectedFoodPlace.id)) {
+        setSelectedFoodPlace(null);
+      }
+    } catch {
+      setNearMeMessage('Food data refreshed. Near Me could not update right now.');
+    }
+  }, [isNearMeActive, refreshFoodPlaces, selectedFoodPlace, userLocation]);
+
   const handleSelectMode = useCallback((nextMode: MactMode) => {
     if (nextMode === selectedMode) return;
 
@@ -270,6 +314,17 @@ export default function HomeScreen() {
     [foodPlaces, isNearMeActive, nearbyPlaces]
   );
 
+  const currentSelectedFoodPlace = useMemo(() => {
+    if (!selectedFoodPlace) return null;
+
+    return (
+      results.find(
+        (result): result is Extract<HomeResult, { kind: 'place' }> =>
+          result.kind === 'place' && result.item.id === selectedFoodPlace.id
+      )?.item ?? selectedFoodPlace
+    );
+  }, [results, selectedFoodPlace]);
+
   const filteredResults = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     const selectedCategoryQuery = selectedCategory === 'All' ? '' : selectedCategory.toLowerCase();
@@ -384,7 +439,7 @@ export default function HomeScreen() {
                 onToggleExpanded={handleToggleMapExpanded}
                 places={filteredResults}
                 searchQuery={searchQuery}
-                selectedPlace={selectedFoodPlace}
+                selectedPlace={currentSelectedFoodPlace}
                 userLocation={userLocation}
               >
                 {isNearMeActive || nearMeMessage || foodDataStatusMessage ? (
@@ -419,12 +474,14 @@ export default function HomeScreen() {
                   errorMessage={foodDataErrorMessage}
                   isCollapsedPreview={isMapExpanded}
                   isLoading={isFoodInitialLoading}
+                  isRefreshing={isFoodRefreshing}
                   onPressFoodPlace={handlePressFoodPlace}
+                  onRefresh={handleRefreshFoodData}
                   onRetry={refreshFoodPlaces}
                   onToggleSavedPlace={handleToggleSavedPlace}
                   results={filteredResults}
                   savedPlaceIds={savedPlaceIds}
-                  selectedPlaceId={selectedFoodPlace?.id}
+                  selectedPlaceId={currentSelectedFoodPlace?.id}
                 />
               </FoodMap>
 
@@ -449,7 +506,7 @@ export default function HomeScreen() {
                 </View>
               ) : null}
 
-              {!selectedFoodPlace ? (
+              {!currentSelectedFoodPlace ? (
                 <FloatingActionButtons
                   activeFilterCount={activeFilterCount}
                   accentColor={foodMode.color}
@@ -490,11 +547,11 @@ export default function HomeScreen() {
       <RestaurantDetailSheet
         accentColor={foodMode.color}
         bottomOffset={restaurantSheetBottomOffset}
-        isSaved={selectedFoodPlace ? savedPlaceIds.includes(selectedFoodPlace.id) : false}
+        isSaved={currentSelectedFoodPlace ? savedPlaceIds.includes(currentSelectedFoodPlace.id) : false}
         onClose={handleCloseRestaurantSheet}
         onSavedChange={refreshSavedPlaceIds}
         onToggleSavedPlace={handleToggleSavedPlace}
-        place={isFoodMode ? selectedFoodPlace : null}
+        place={isFoodMode ? currentSelectedFoodPlace : null}
       />
       <FoodFilterSheet
         accentColor={foodMode.color}

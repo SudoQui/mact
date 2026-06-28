@@ -1,4 +1,12 @@
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
 import { BookmarkButton } from '@/components/home/BookmarkIconButton';
 import {
@@ -25,7 +33,9 @@ type MapResultsProps = {
   emptyMessage: string;
   errorMessage: string | null;
   isLoading: boolean;
+  isRefreshing?: boolean;
   onPressFoodPlace: (place: Place) => void;
+  onRefresh?: () => void;
   onRetry: () => void;
   onToggleSavedPlace: (placeId: string) => void;
   results: HomeResult[];
@@ -39,7 +49,9 @@ export function MapResults({
   emptyMessage,
   errorMessage,
   isLoading,
+  isRefreshing = false,
   onPressFoodPlace,
+  onRefresh,
   onRetry,
   onToggleSavedPlace,
   results,
@@ -93,7 +105,20 @@ export function MapResults({
         </Text>
         {isCollapsedPreview ? <Text style={styles.previewHint}>Map view</Text> : null}
       </View>
-      <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.list}
+        refreshControl={
+          onRefresh && !isCollapsedPreview ? (
+            <RefreshControl
+              colors={[accentColor]}
+              onRefresh={onRefresh}
+              refreshing={isRefreshing}
+              tintColor={accentColor}
+            />
+          ) : undefined
+        }
+        showsVerticalScrollIndicator={false}
+      >
         {(isCollapsedPreview ? results.slice(0, 1) : results).map((result) => (
           <ResultCard
             accentColor={accentColor}

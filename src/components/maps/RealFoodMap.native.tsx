@@ -16,6 +16,12 @@ import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { formatMarkerName, getFoodCategoryVisual } from '@/components/home/categoryVisuals';
 import type { HomeResult } from '@/components/home/MapResults';
 import { SymbolIconButton } from '@/components/home/SymbolIconButton';
+import {
+  getMarkerDisplayMode,
+  getZoomForRadiusKm,
+  type MapViewport,
+  type ReturnCameraView,
+} from '@/lib/mapGeometry';
 import type { Place } from '@/services/placesService';
 
 type RealFoodMapProps = {
@@ -26,8 +32,12 @@ type RealFoodMapProps = {
   userLocation?: { latitude: number; longitude: number } | null;
   nearMeActive: boolean;
   isExpanded: boolean;
+  nearMeRadiusKm: number;
   onToggleExpanded: () => void;
   onMapInteraction?: () => void;
+  onReturnCameraViewRestored?: () => void;
+  onViewportChange?: (viewport: MapViewport, isUserInteraction: boolean) => void;
+  returnCameraView?: ReturnCameraView | null;
   searchQuery: string;
   children?: ReactNode;
 };
@@ -59,7 +69,6 @@ const DEFAULT_ZOOM = 11;
 const USER_ZOOM = 13;
 const SELECTED_ZOOM = 15.8;
 const MAX_USER_ZOOM = 17;
-const MARKER_NAME_ZOOM = 15.2;
 const ZOOM_STATE_STEP = 0.15;
 const FIT_PADDING = 48;
 const SEARCH_FIT_PADDING = 64;
@@ -84,9 +93,13 @@ export const RealFoodMap = memo(function RealFoodMap({
   onSelectPlace,
   userLocation,
   nearMeActive,
+  nearMeRadiusKm,
   isExpanded,
   onToggleExpanded,
   onMapInteraction,
+  onReturnCameraViewRestored,
+  onViewportChange,
+  returnCameraView,
   searchQuery,
   children,
 }: RealFoodMapProps) {
@@ -94,6 +107,7 @@ export const RealFoodMap = memo(function RealFoodMap({
   const hasSetInitialCameraRef = useRef(false);
   const lastSelectedCameraKeyRef = useRef<string | null>(null);
   const lastNearMeCameraKeyRef = useRef<string | null>(null);
+  const lastReturnCameraKeyRef = useRef<string | null>(null);
   const lastSearchCameraQueryRef = useRef<string | null>(null);
   const currentZoomRef = useRef(DEFAULT_ZOOM);
   const [isMapLoaded, setIsMapLoaded] = useState(false);
@@ -194,16 +208,34 @@ export const RealFoodMap = memo(function RealFoodMap({
       return;
     }
 
-    const locationKey = `${userLocation.latitude.toFixed(5)}:${userLocation.longitude.toFixed(5)}`;
+    const locationKey = `${userLocation.latitude.toFixed(5)}:${userLocation.longitude.toFixed(5)}:${nearMeRadiusKm}`;
     if (lastNearMeCameraKeyRef.current === locationKey) return;
 
     lastNearMeCameraKeyRef.current = locationKey;
     cameraRef.current?.easeTo({
       center: [userLocation.longitude, userLocation.latitude],
-      zoom: clampMapZoom(USER_ZOOM),
+      zoom: clampMapZoom(getZoomForRadiusKm(nearMeRadiusKm)),
       duration: 650,
     });
-  }, [nearMeActive, userLocation]);
+  }, [nearMeActive, nearMeRadiusKm, userLocation]);
+
+  useEffect(() => {
+    if (!returnCameraView) {
+      lastReturnCameraKeyRef.current = null;
+      return;
+    }
+
+    const cameraKey = `${returnCameraView.reason}:${returnCameraView.centerCoordinate.join(',')}:${returnCameraView.zoomLevel}`;
+    if (lastReturnCameraKeyRef.current === cameraKey) return;
+
+    lastReturnCameraKeyRef.current = cameraKey;
+    cameraRef.current?.easeTo({
+      center: returnCameraView.centerCoordinate,
+      zoom: clampMapZoom(returnCameraView.zoomLevel),
+      duration: 550,
+    });
+    onReturnCameraViewRestored?.();
+  }, [onReturnCameraViewRestored, returnCameraView]);
 
   useEffect(() => {
     if (!normalizedSearchQuery) {
@@ -249,6 +281,15 @@ export const RealFoodMap = memo(function RealFoodMap({
   const handleRegionDidChange = useCallback(
     (event: NativeSyntheticEvent<ViewStateChangeEvent>) => {
       const nextZoom = event.nativeEvent.zoom;
+      onViewportChange?.(
+        {
+          bounds: event.nativeEvent.bounds,
+          centerCoordinate: event.nativeEvent.center,
+          zoomLevel: clampMapZoom(nextZoom),
+        },
+        event.nativeEvent.userInteraction
+      );
+
       if (Number.isFinite(nextZoom)) {
         if (nextZoom > MAX_USER_ZOOM + 0.05) {
           cameraRef.current?.zoomTo(MAX_USER_ZOOM, { duration: 120 });
@@ -263,7 +304,7 @@ export const RealFoodMap = memo(function RealFoodMap({
 
       if (event.nativeEvent.userInteraction) onMapInteraction?.();
     },
-    [onMapInteraction]
+    [onMapInteraction, onViewportChange]
   );
 
   return (
@@ -297,7 +338,7 @@ export const RealFoodMap = memo(function RealFoodMap({
               key={place.id}
               onSelectPlace={onSelectPlace}
               place={place}
-              showNameLabel={currentZoom >= MARKER_NAME_ZOOM}
+              displayMode={getMarkerDisplayMode(currentZoom)}
             />
           ))}
 
@@ -364,18 +405,19 @@ export const RealFoodMap = memo(function RealFoodMap({
 });
 
 const RestaurantMarker = memo(function RestaurantMarker({
+  displayMode,
   isSelected,
   onSelectPlace,
   place,
-  showNameLabel,
 }: {
+  displayMode: ReturnType<typeof getMarkerDisplayMode>;
   isSelected: boolean;
   onSelectPlace: (placeId: string) => void;
   place: Place;
-  showNameLabel: boolean;
 }) {
   const categoryVisual = getFoodCategoryVisual(place.category);
-  const shouldShowName = isSelected || showNameLabel;
+  const shouldShowName = isSelected || displayMode === 'label';
+  const shouldShowDot = !isSelected && displayMode === 'dot';
   const label = shouldShowName ? formatMarkerName(place.name) : categoryVisual.pinLabel;
   const handlePress = useCallback(() => {
     onSelectPlace(place.id);
@@ -393,17 +435,23 @@ const RestaurantMarker = memo(function RestaurantMarker({
         accessibilityRole="button"
         style={[
           styles.restaurantMarker,
-          shouldShowName ? styles.restaurantNameMarker : styles.restaurantInitialMarker,
+          shouldShowDot
+            ? styles.restaurantDotMarker
+            : shouldShowName
+              ? styles.restaurantNameMarker
+              : styles.restaurantInitialMarker,
           { backgroundColor: categoryVisual.color },
           isSelected && styles.selectedRestaurantMarker,
         ]}
       >
-        <Text
-          numberOfLines={1}
-          style={[styles.restaurantMarkerLabel, isSelected && styles.selectedMarkerLabel]}
-        >
-          {label}
-        </Text>
+        {shouldShowDot ? null : (
+          <Text
+            numberOfLines={1}
+            style={[styles.restaurantMarkerLabel, isSelected && styles.selectedMarkerLabel]}
+          >
+            {label}
+          </Text>
+        )}
       </View>
     </Marker>
   );
@@ -417,8 +465,7 @@ function shouldUpdateZoomState(previousZoom: number, nextZoom: number) {
   if (Math.abs(previousZoom - nextZoom) >= ZOOM_STATE_STEP) return true;
 
   return (
-    (previousZoom < MARKER_NAME_ZOOM && nextZoom >= MARKER_NAME_ZOOM) ||
-    (previousZoom >= MARKER_NAME_ZOOM && nextZoom < MARKER_NAME_ZOOM)
+    getMarkerDisplayMode(previousZoom) !== getMarkerDisplayMode(nextZoom)
   );
 }
 
@@ -441,7 +488,6 @@ const styles = StyleSheet.create({
     top: 0,
   },
   restaurantMarker: {
-    borderWidth: 3,
     borderColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
@@ -451,16 +497,24 @@ const styles = StyleSheet.create({
     shadowRadius: 5,
     elevation: 5,
   },
+  restaurantDotMarker: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
+  },
   restaurantInitialMarker: {
     width: 36,
     height: 36,
     borderRadius: 18,
+    borderWidth: 3,
   },
   restaurantNameMarker: {
     minWidth: 58,
     maxWidth: 150,
     minHeight: 34,
     borderRadius: 18,
+    borderWidth: 3,
     paddingHorizontal: 10,
   },
   selectedRestaurantMarker: {

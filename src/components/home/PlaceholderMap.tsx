@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-na
 
 import { formatMarkerName, getFoodCategoryVisual } from '@/components/home/categoryVisuals';
 import { SymbolIconButton } from '@/components/home/SymbolIconButton';
+import type { MapViewport } from '@/lib/mapGeometry';
 import type { Place } from '@/services/placesService';
 
 type PlaceholderMapProps = {
@@ -13,8 +14,10 @@ type PlaceholderMapProps = {
   results?: HomeResult[];
   selectedPlace?: Place | null;
   userLocation?: { latitude: number; longitude: number } | null;
+  nearMeRadiusKm?: number;
   onPressPlace?: (placeId: string) => void;
   onMapDrag?: () => void;
+  onViewportChange?: (viewport: MapViewport, isUserInteraction: boolean) => void;
   onResetView?: () => void;
   isExpanded?: boolean;
   onToggleExpanded?: () => void;
@@ -49,6 +52,7 @@ export function PlaceholderMap({
   userLocation,
   onPressPlace,
   onMapDrag,
+  onViewportChange,
   onResetView,
   isExpanded = false,
   onToggleExpanded,
@@ -92,6 +96,7 @@ export function PlaceholderMap({
     const centerY = (layout.height / 2 - translateY) / scale;
 
     setScale(nextScale);
+    emitViewport(nextScale, true);
     setTranslateX(layout.width / 2 - centerX * nextScale);
     setTranslateY(layout.height / 2 - centerY * nextScale);
   };
@@ -103,6 +108,7 @@ export function PlaceholderMap({
     setScale(DEFAULT_SCALE);
     setTranslateX(0);
     setTranslateY(0);
+    emitViewport(DEFAULT_SCALE, true);
     onResetView?.();
   };
 
@@ -134,6 +140,26 @@ export function PlaceholderMap({
     setScale(targetScale);
     setTranslateX(layout.width / 2 - centerX * targetScale * layout.width);
     setTranslateY(layout.height / 2 - centerY * targetScale * layout.height);
+    emitViewport(targetScale, true);
+  };
+
+  const emitViewport = (nextScale: number, isUserInteraction: boolean) => {
+    onViewportChange?.(
+      {
+        bounds: [
+          CANBERRA_BOUNDS.westLng,
+          CANBERRA_BOUNDS.southLat,
+          CANBERRA_BOUNDS.eastLng,
+          CANBERRA_BOUNDS.northLat,
+        ],
+        centerCoordinate: [
+          (CANBERRA_BOUNDS.westLng + CANBERRA_BOUNDS.eastLng) / 2,
+          (CANBERRA_BOUNDS.northLat + CANBERRA_BOUNDS.southLat) / 2,
+        ],
+        zoomLevel: 10 + nextScale * 2,
+      },
+      isUserInteraction
+    );
   };
 
   const handleResponderGrant = (event: any) => {
@@ -159,6 +185,7 @@ export function PlaceholderMap({
     if (!hasDraggedRef.current) {
       hasDraggedRef.current = true;
       onMapDrag?.();
+      emitViewport(scale, true);
     }
   };
 
@@ -170,7 +197,7 @@ export function PlaceholderMap({
   return (
     <View style={styles.container}>
       <View
-        style={[styles.mapArea, isExpanded ? styles.expandedMapArea : { height: splitMapHeight }]}
+        style={[styles.mapPanel, isExpanded ? styles.expandedMapPanel : { height: splitMapHeight }]}
         onLayout={(event) => setLayout(event.nativeEvent.layout)}>
         <View
           style={[
@@ -310,13 +337,13 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
-  mapArea: {
+  mapPanel: {
     minHeight: 220,
     backgroundColor: '#D4E9F7',
     position: 'relative',
     overflow: 'hidden',
   },
-  expandedMapArea: {
+  expandedMapPanel: {
     flex: 1,
   },
   mapContent: {

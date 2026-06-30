@@ -1,5 +1,7 @@
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated as RNAnimated,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -29,37 +31,80 @@ export type HomeResult =
       item: CommunityEvent;
     };
 
+export type HomeResultSection = {
+  count: number;
+  emptyMessage?: string;
+  key: string;
+  results: HomeResult[];
+  subtitle?: string;
+  title: string;
+  variant?: 'primary' | 'outside';
+};
+
 type MapResultsProps = {
   accentColor: string;
+  contentBottomPadding?: number;
   emptyMessage: string;
+  emptyTitle?: string;
   errorMessage: string | null;
   isLoading: boolean;
   isRefreshing?: boolean;
+  isUpdatingArea?: boolean;
+  listCount?: number;
+  listCountSuffix?: string;
+  listTitle?: string;
   onPressFoodPlace: (place: Place) => void;
   onRefresh?: () => void;
   onRetry: () => void;
   onToggleSavedPlace: (placeId: string) => void;
   results: HomeResult[];
   savedPlaceIds: string[];
+  sections?: HomeResultSection[];
   selectedPlaceId?: string | null;
   isCollapsedPreview?: boolean;
 };
 
 export function MapResults({
   accentColor,
+  contentBottomPadding = 18,
   emptyMessage,
+  emptyTitle = 'No results found',
   errorMessage,
   isLoading,
   isRefreshing = false,
+  isUpdatingArea = false,
+  listCount,
+  listCountSuffix,
+  listTitle,
   onPressFoodPlace,
   onRefresh,
   onRetry,
   onToggleSavedPlace,
   results,
   savedPlaceIds,
+  sections,
   selectedPlaceId,
   isCollapsedPreview = false,
 }: MapResultsProps) {
+  const scrollViewRef = useRef<ScrollView | null>(null);
+  const visibleResults = isCollapsedPreview ? results.slice(0, 1) : results;
+  const visibleSections = isCollapsedPreview || !sections?.length
+    ? [{ count: visibleResults.length, key: 'all-results', results: visibleResults, title: '' }]
+    : sections;
+  const shouldShowHeaderUpdating =
+    isUpdatingArea && !visibleSections.some((section) => section.variant === 'primary');
+  const visibleResultKey = visibleResults
+    .map((result) => `${result.kind}:${result.item.id}`)
+    .join('|');
+
+  useEffect(() => {
+    const frameId = requestAnimationFrame(() => {
+      scrollViewRef.current?.scrollTo({ y: 0, animated: false });
+    });
+
+    return () => cancelAnimationFrame(frameId);
+  }, [visibleResultKey]);
+
   if (isLoading) {
     return (
       <View style={styles.stateContainer}>
@@ -89,50 +134,227 @@ export function MapResults({
     );
   }
 
-  if (results.length === 0) {
-    return (
-      <View style={styles.stateContainer}>
-        <Text style={styles.emptyTitle}>No results found</Text>
-        <Text style={styles.stateText}>{emptyMessage}</Text>
-      </View>
-    );
-  }
+  const resolvedListCount = listCount ?? results.length;
+  const resolvedListCountSuffix =
+    listCountSuffix ?? `halal ${results.length === 1 ? 'place' : 'places'}`;
 
   return (
     <View style={styles.resultsContainer}>
-      <View style={styles.listHeader}>
-        <Text style={styles.listTitle}>
-          {results.length} halal {results.length === 1 ? 'place' : 'places'}
-        </Text>
-        {isCollapsedPreview ? <Text style={styles.previewHint}>Map view</Text> : null}
-      </View>
-      <ScrollView
-        contentContainerStyle={styles.list}
-        refreshControl={
-          onRefresh && !isCollapsedPreview ? (
-            <RefreshControl
-              colors={[accentColor]}
-              onRefresh={onRefresh}
-              refreshing={isRefreshing}
-              tintColor={accentColor}
-            />
-          ) : undefined
-        }
-        showsVerticalScrollIndicator={false}
-      >
-        {(isCollapsedPreview ? results.slice(0, 1) : results).map((result) => (
-          <ResultCard
-            accentColor={accentColor}
-            key={`${result.kind}-${result.item.id}`}
-            onPressFoodPlace={onPressFoodPlace}
-            onToggleSavedPlace={onToggleSavedPlace}
-            result={result}
-            savedPlaceIds={savedPlaceIds}
-            selectedPlaceId={selectedPlaceId}
-          />
-        ))}
-      </ScrollView>
+      <ListHeader
+        count={resolvedListCount}
+        isCollapsedPreview={isCollapsedPreview}
+        isUpdatingArea={shouldShowHeaderUpdating}
+        suffix={resolvedListCountSuffix}
+        title={listTitle}
+      />
+      {results.length === 0 ? (
+        <View style={styles.stateContainer}>
+          <Text style={styles.emptyTitle}>{emptyTitle}</Text>
+          <Text style={styles.stateText}>{emptyMessage}</Text>
+        </View>
+      ) : (
+        <ScrollView
+          contentContainerStyle={[styles.list, { paddingBottom: contentBottomPadding }]}
+          ref={scrollViewRef}
+          refreshControl={
+            onRefresh && !isCollapsedPreview ? (
+              <RefreshControl
+                colors={[accentColor]}
+                onRefresh={onRefresh}
+                refreshing={isRefreshing}
+                tintColor={accentColor}
+              />
+            ) : undefined
+          }
+          showsVerticalScrollIndicator={false}
+          style={styles.scrollView}
+        >
+          {visibleSections.map((section) => (
+            <View
+              key={section.key}
+              style={[
+                styles.resultSection,
+                section.variant === 'outside' && styles.outsideResultSection,
+              ]}
+            >
+              {section.variant === 'outside' ? (
+                <OutsideSectionDivider count={section.count} subtitle={section.subtitle} title={section.title} />
+              ) : section.title ? (
+                <SectionHeader
+                  count={section.count}
+                  isUpdatingArea={isUpdatingArea && section.variant === 'primary'}
+                  title={section.title}
+                />
+              ) : null}
+              {section.emptyMessage ? (
+                <Text style={styles.sectionEmptyText}>{section.emptyMessage}</Text>
+              ) : null}
+              {section.results.map((result) => (
+                <View key={`${result.kind}-${result.item.id}`} style={styles.resultCardWrapper}>
+                  <ResultCard
+                    accentColor={accentColor}
+                    onPressFoodPlace={onPressFoodPlace}
+                    onToggleSavedPlace={onToggleSavedPlace}
+                    result={result}
+                    savedPlaceIds={savedPlaceIds}
+                    selectedPlaceId={selectedPlaceId}
+                  />
+                </View>
+              ))}
+            </View>
+          ))}
+        </ScrollView>
+      )}
     </View>
+  );
+}
+
+function ListHeader({
+  count,
+  isCollapsedPreview,
+  isUpdatingArea,
+  suffix,
+  title,
+}: {
+  count: number;
+  isCollapsedPreview: boolean;
+  isUpdatingArea: boolean;
+  suffix: string;
+  title?: string;
+}) {
+  return (
+    <View style={styles.listHeader}>
+      {title ? (
+        <AnimatedCountTitle count={count} suffix={suffix} title={title} />
+      ) : (
+        <AnimatedCountTitle count={count} suffix={suffix} />
+      )}
+      {isCollapsedPreview ? (
+        <Text style={styles.previewHint}>Map view</Text>
+      ) : isUpdatingArea ? (
+        <Text style={styles.updatingLabel}>Updating area...</Text>
+      ) : null}
+    </View>
+  );
+}
+
+function SectionHeader({
+  count,
+  isUpdatingArea,
+  title,
+}: {
+  count: number;
+  isUpdatingArea: boolean;
+  title: string;
+}) {
+  return (
+    <View style={styles.sectionHeader}>
+      <View style={styles.sectionTitleRow}>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        <Text style={styles.sectionSeparator}>-</Text>
+        <PulsingCount count={count} />
+        <Text style={styles.sectionCountSuffix}>{count === 1 ? 'place' : 'places'}</Text>
+      </View>
+      {isUpdatingArea ? <Text style={styles.updatingLabel}>Updating area...</Text> : null}
+    </View>
+  );
+}
+
+function OutsideSectionDivider({
+  count,
+  subtitle,
+  title,
+}: {
+  count: number;
+  subtitle?: string;
+  title: string;
+}) {
+  return (
+    <View style={styles.outsideDivider}>
+      <View style={styles.outsideDividerHeader}>
+        <View style={styles.outsideTitleRow}>
+          <View style={styles.outsideDot} />
+          <Text style={styles.outsideTitle}>{title}</Text>
+        </View>
+        <View style={styles.outsideCountRow}>
+          <PulsingCount count={count} />
+          <Text style={styles.outsideCountSuffix}>{count === 1 ? 'place' : 'places'}</Text>
+        </View>
+      </View>
+      {subtitle ? <Text style={styles.outsideSubtitle}>{subtitle}</Text> : null}
+    </View>
+  );
+}
+
+function PulsingCount({ count }: { count: number }) {
+  const [scaleAnim] = useState(() => new RNAnimated.Value(1));
+
+  useEffect(() => {
+    RNAnimated.sequence([
+      RNAnimated.timing(scaleAnim, {
+        duration: 90,
+        toValue: 1.08,
+        useNativeDriver: true,
+      }),
+      RNAnimated.timing(scaleAnim, {
+        duration: 120,
+        toValue: 1,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [count, scaleAnim]);
+
+  return (
+    <RNAnimated.Text style={[styles.sectionCount, { transform: [{ scale: scaleAnim }] }]}>
+      {count}
+    </RNAnimated.Text>
+  );
+}
+
+function AnimatedCountTitle({
+  count,
+  suffix,
+  title,
+}: {
+  count: number;
+  suffix: string;
+  title?: string;
+}) {
+  const [displayCount, setDisplayCount] = useState(count);
+  const previousCountRef = useRef(count);
+
+  useEffect(() => {
+    const previousCount = previousCountRef.current;
+    if (previousCount === count) {
+      setDisplayCount(count);
+      return;
+    }
+
+    let frameId = 0;
+    const startedAt = Date.now();
+    const durationMs = 220;
+
+    const tick = () => {
+      const progress = Math.min(1, (Date.now() - startedAt) / durationMs);
+      const easedProgress = 1 - (1 - progress) ** 3;
+      setDisplayCount(Math.round(previousCount + (count - previousCount) * easedProgress));
+
+      if (progress < 1) {
+        frameId = requestAnimationFrame(tick);
+        return;
+      }
+
+      previousCountRef.current = count;
+      setDisplayCount(count);
+    };
+
+    frameId = requestAnimationFrame(tick);
+
+    return () => cancelAnimationFrame(frameId);
+  }, [count]);
+
+  return (
+    <Text style={styles.listTitle}>{title ?? `${displayCount} ${suffix}`}</Text>
   );
 }
 
@@ -307,9 +529,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 10,
     paddingHorizontal: 2,
   },
   listTitle: {
+    flexShrink: 1,
     color: '#2B302D',
     fontSize: 14,
     fontWeight: '900',
@@ -319,10 +543,118 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
+  updatingLabel: {
+    color: '#7A817D',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  scrollView: {
+    flex: 1,
+    minHeight: 0,
+  },
   list: {
-    gap: 7,
+    flexGrow: 1,
     paddingTop: 2,
-    paddingBottom: 8,
+  },
+  resultSection: {
+    gap: 7,
+  },
+  outsideResultSection: {
+    marginTop: 16,
+    gap: 10,
+  },
+  resultCardWrapper: {
+    transform: [{ translateX: 0 }, { translateY: 0 }, { scale: 1 }],
+  },
+  sectionHeader: {
+    minHeight: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingHorizontal: 2,
+    paddingTop: 3,
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    minWidth: 0,
+  },
+  sectionTitle: {
+    color: '#59605C',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  sectionSeparator: {
+    color: '#9AA19D',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  sectionCount: {
+    color: '#303733',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  sectionCountSuffix: {
+    color: '#59605C',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  sectionEmptyText: {
+    color: '#6B736E',
+    fontSize: 12,
+    fontWeight: '700',
+    paddingHorizontal: 2,
+  },
+  outsideDivider: {
+    borderWidth: 1,
+    borderColor: '#FFD89A',
+    borderRadius: 8,
+    backgroundColor: '#FFF4E5',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  outsideDividerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  outsideTitleRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    minWidth: 0,
+  },
+  outsideDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#D97706',
+  },
+  outsideTitle: {
+    flexShrink: 1,
+    color: '#7A3E12',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  outsideSubtitle: {
+    color: '#9A5B00',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  outsideCountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  outsideCountSuffix: {
+    color: '#7A3E12',
+    fontSize: 11,
+    fontWeight: '800',
   },
   card: {
     borderWidth: 1,

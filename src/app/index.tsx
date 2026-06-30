@@ -1,5 +1,5 @@
 import * as Location from 'expo-location';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, BackHandler, Easing, Keyboard, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -9,8 +9,9 @@ import { FloatingActionButtons } from '@/components/home/FloatingActionButtons';
 import { FoodFilterSheet } from '@/components/home/FoodFilterSheet';
 import { FoodMap } from '@/components/home/FoodMap';
 import { HomeSearchBar } from '@/components/home/HomeSearchBar';
-import { MapResults, type HomeResult } from '@/components/home/MapResults';
+import { MapResults, type HomeResult, type HomeResultSection } from '@/components/home/MapResults';
 import { ModeBar } from '@/components/home/ModeBar';
+import { NearMeRadiusControl } from '@/components/home/NearMeRadiusControl';
 import { RestaurantDetailSheet } from '@/components/home/RestaurantDetailSheet';
 import { SavedRestaurantsSheet } from '@/components/home/SavedRestaurantsSheet';
 import { UnderConstructionCard } from '@/components/home/UnderConstructionCard';
@@ -23,23 +24,39 @@ import {
 import { getModeConfig, MACT_MODES, type MactMode } from '@/components/home/mactModes';
 import { useFoodPlaces } from '@/hooks/useFoodPlaces';
 import { getSavedPlaceIds, toggleSavedPlace } from '@/lib/favourites';
-import { getNearbyPlaces, type Place } from '@/services/placesService';
+import {
+  getDistanceKm,
+  isPlaceInsideBounds,
+  type MapBounds,
+  type MapViewport,
+  type ReturnCameraView,
+} from '@/lib/mapGeometry';
+import type { Place } from '@/services/placesService';
 
-const NEARBY_RADIUS_METERS = 10000;
 const REQUEST_TIMEOUT_MS = 8000;
 const MODE_SWITCHER_HEIGHT = 54;
 const SHEET_MODE_SWITCHER_GAP = 10;
+const DEFAULT_NEAR_ME_RADIUS_KM = 5;
+const RETURN_VIEW_ZOOM_THRESHOLD = 15.2;
+const MAP_FRAME_UPDATE_DEBOUNCE_MS = 400;
 
 export default function HomeScreen() {
   const [selectedMode, setSelectedMode] = useState<MactMode>('food');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<FoodCategoryChip>('All');
   const [foodFilters, setFoodFilters] = useState<FoodFilterState>(EMPTY_FOOD_FILTERS);
-  const [nearbyPlaces, setNearbyPlaces] = useState<Place[]>([]);
   const [nearMeMessage, setNearMeMessage] = useState<string | null>(null);
   const [isNearMeActive, setIsNearMeActive] = useState(false);
   const [isBrowsingNearArea, setIsBrowsingNearArea] = useState(false);
   const [isNearMeLoading, setIsNearMeLoading] = useState(false);
+  const [nearMeRadiusKm, setNearMeRadiusKm] = useState(DEFAULT_NEAR_ME_RADIUS_KM);
+  const [mapBounds, setMapBounds] = useState<MapBounds | null>(null);
+  const [mapCenter, setMapCenter] = useState<[number, number] | null>(null);
+  const [mapZoom, setMapZoom] = useState(11);
+  const [settledMapBounds, setSettledMapBounds] = useState<MapBounds | null>(null);
+  const [settledMapCenter, setSettledMapCenter] = useState<[number, number] | null>(null);
+  const [isUpdatingMapFrame, setIsUpdatingMapFrame] = useState(false);
+  const [returnCameraView, setReturnCameraView] = useState<ReturnCameraView | null>(null);
   const [isMapExpanded, setIsMapExpanded] = useState(false);
   const [selectedFoodPlace, setSelectedFoodPlace] = useState<Place | null>(null);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -60,6 +77,7 @@ export default function HomeScreen() {
   const mode = useMemo(() => getModeConfig(selectedMode), [selectedMode]);
   const foodMode = useMemo(() => getModeConfig('food'), []);
   const isFoodMode = selectedMode === 'food';
+  const mapFrameUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refreshSavedPlaceIds = useCallback(async () => {
     setSavedPlaceIds(await getSavedPlaceIds());
@@ -69,8 +87,11 @@ export default function HomeScreen() {
     void Promise.resolve().then(refreshSavedPlaceIds);
   }, [refreshSavedPlaceIds]);
 
+  useEffect(() => () => {
+    if (mapFrameUpdateTimeoutRef.current) clearTimeout(mapFrameUpdateTimeoutRef.current);
+  }, []);
+
   const restoreNormalFoodResults = useCallback(async () => {
-    setNearbyPlaces([]);
     if (foodPlaces.length === 0) await refreshFoodPlaces();
   }, [foodPlaces.length, refreshFoodPlaces]);
 
@@ -78,7 +99,6 @@ export default function HomeScreen() {
     setNearMeMessage(null);
     setIsNearMeActive(false);
     setIsBrowsingNearArea(false);
-    setNearbyPlaces([]);
     setUserLocation(null);
     await restoreNormalFoodResults();
   }, [restoreNormalFoodResults]);
@@ -101,29 +121,7 @@ export default function HomeScreen() {
     if (!userLocation) {
       setIsNearMeActive(false);
       setIsBrowsingNearArea(false);
-      setNearbyPlaces([]);
       return;
-    }
-
-    try {
-      const refreshedNearbyPlaces = await withTimeout(
-        getNearbyPlaces(
-          userLocation.latitude,
-          userLocation.longitude,
-          'food',
-          NEARBY_RADIUS_METERS
-        )
-      );
-      const sortedPlaces = [...refreshedNearbyPlaces].sort(
-        (left, right) => (left.distance_meters ?? 0) - (right.distance_meters ?? 0)
-      );
-
-      setNearbyPlaces(sortedPlaces);
-      if (selectedFoodPlace && !sortedPlaces.some((place) => place.id === selectedFoodPlace.id)) {
-        setSelectedFoodPlace(null);
-      }
-    } catch {
-      setNearMeMessage('Food data refreshed. Near Me could not update right now.');
     }
   }, [isNearMeActive, refreshFoodPlaces, selectedFoodPlace, userLocation]);
 
@@ -150,11 +148,70 @@ export default function HomeScreen() {
     setSelectedMode(nextMode);
   }, [modeProgress, selectedMode]);
 
+  const clearMapFrame = useCallback(() => {
+    if (mapFrameUpdateTimeoutRef.current) {
+      clearTimeout(mapFrameUpdateTimeoutRef.current);
+      mapFrameUpdateTimeoutRef.current = null;
+    }
+
+    setSettledMapBounds(null);
+    setSettledMapCenter(null);
+    setIsUpdatingMapFrame(false);
+  }, []);
+
+  const scheduleMapFrameUpdate = useCallback((bounds: MapBounds | null, center: [number, number] | null) => {
+    if (!isValidMapBounds(bounds) || !isValidMapCenter(center)) {
+      setSettledMapBounds(null);
+      setSettledMapCenter(null);
+      setIsUpdatingMapFrame(false);
+      return;
+    }
+
+    if (mapFrameUpdateTimeoutRef.current) clearTimeout(mapFrameUpdateTimeoutRef.current);
+
+    setIsUpdatingMapFrame(true);
+    mapFrameUpdateTimeoutRef.current = setTimeout(() => {
+      setSettledMapBounds(bounds);
+      setSettledMapCenter(center);
+      setIsUpdatingMapFrame(false);
+      mapFrameUpdateTimeoutRef.current = null;
+    }, MAP_FRAME_UPDATE_DEBOUNCE_MS);
+  }, []);
+
+  const handleViewportChange = useCallback((viewport: MapViewport, isUserInteraction: boolean) => {
+    setMapBounds(viewport.bounds);
+    setMapCenter(viewport.centerCoordinate);
+    setMapZoom(viewport.zoomLevel);
+
+    if (isUserInteraction) {
+      scheduleMapFrameUpdate(viewport.bounds, viewport.centerCoordinate);
+      if (isNearMeActive) setIsBrowsingNearArea(true);
+      return;
+    }
+
+    if (!settledMapBounds && isValidMapBounds(viewport.bounds) && isValidMapCenter(viewport.centerCoordinate)) {
+      setSettledMapBounds(viewport.bounds);
+      setSettledMapCenter(viewport.centerCoordinate);
+    }
+  }, [isNearMeActive, scheduleMapFrameUpdate, settledMapBounds]);
+
+  const buildReturnCameraView = useCallback((): ReturnCameraView | null => {
+    if (!mapCenter || mapZoom >= RETURN_VIEW_ZOOM_THRESHOLD) return null;
+
+    return {
+      bounds: mapBounds,
+      centerCoordinate: mapCenter,
+      reason: isNearMeActive ? 'near_me' : mapBounds ? 'area' : 'wide',
+      zoomLevel: mapZoom,
+    };
+  }, [isNearMeActive, mapBounds, mapCenter, mapZoom]);
+
   const handlePressFoodPlace = useCallback((place: Place) => {
     Keyboard.dismiss();
     setIsSearchFocused(false);
+    setReturnCameraView(buildReturnCameraView());
     setSelectedFoodPlace(place);
-  }, []);
+  }, [buildReturnCameraView]);
 
   const handleSelectSavedRestaurant = useCallback(async (place: Place) => {
     setIsSavedSheetOpen(false);
@@ -163,12 +220,13 @@ export default function HomeScreen() {
     if (isNearMeActive) {
       setIsNearMeActive(false);
       setIsBrowsingNearArea(false);
-      setNearbyPlaces([]);
       setUserLocation(null);
       await restoreNormalFoodResults();
     }
+    clearMapFrame();
+    setReturnCameraView(buildReturnCameraView());
     setSelectedFoodPlace(place);
-  }, [isNearMeActive, restoreNormalFoodResults]);
+  }, [buildReturnCameraView, clearMapFrame, isNearMeActive, restoreNormalFoodResults]);
 
   const handleMapInteraction = useCallback(() => {
     if (isNearMeActive) setIsBrowsingNearArea(true);
@@ -200,23 +258,13 @@ export default function HomeScreen() {
       const location = await withTimeout(
         Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
       );
-      const nearbyPlaces = await withTimeout(
-        getNearbyPlaces(
-          location.coords.latitude,
-          location.coords.longitude,
-          'food',
-          NEARBY_RADIUS_METERS
-        )
-      );
-      const sortedPlaces = [...nearbyPlaces].sort(
-        (left, right) => (left.distance_meters ?? 0) - (right.distance_meters ?? 0)
-      );
 
       setUserLocation({
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
       });
-      setNearbyPlaces(sortedPlaces);
+      setNearMeRadiusKm(DEFAULT_NEAR_ME_RADIUS_KM);
+      clearMapFrame();
       setIsNearMeActive(true);
       setIsBrowsingNearArea(false);
     } catch {
@@ -228,7 +276,7 @@ export default function HomeScreen() {
     } finally {
       setIsNearMeLoading(false);
     }
-  }, [restoreNormalFoodResults]);
+  }, [clearMapFrame, restoreNormalFoodResults]);
 
   const handleToggleSavedPlace = useCallback(async (placeId: string) => {
     const nextIsSaved = await toggleSavedPlace(placeId);
@@ -275,7 +323,7 @@ export default function HomeScreen() {
       }
 
       if (isFoodMode && selectedFoodPlace) {
-        setSelectedFoodPlace(null);
+        handleCloseRestaurantSheet();
         return true;
       }
 
@@ -301,6 +349,7 @@ export default function HomeScreen() {
     return () => subscription.remove();
   }, [
     handleSelectMode,
+    handleCloseRestaurantSheet,
     isFilterSheetOpen,
     isFoodMode,
     isMapExpanded,
@@ -309,44 +358,158 @@ export default function HomeScreen() {
     selectedFoodPlace,
   ]);
 
-  const results = useMemo<HomeResult[]>(
-    () => (isNearMeActive ? nearbyPlaces : foodPlaces).map((item) => ({ kind: 'place', item })),
-    [foodPlaces, isNearMeActive, nearbyPlaces]
-  );
+  const query = searchQuery.trim().toLowerCase();
+  const hasSearchQuery = query.length > 0;
 
   const currentSelectedFoodPlace = useMemo(() => {
     if (!selectedFoodPlace) return null;
 
     return (
-      results.find(
-        (result): result is Extract<HomeResult, { kind: 'place' }> =>
-          result.kind === 'place' && result.item.id === selectedFoodPlace.id
-      )?.item ?? selectedFoodPlace
+      foodPlaces.find((place) => place.id === selectedFoodPlace.id) ?? selectedFoodPlace
     );
-  }, [results, selectedFoodPlace]);
+  }, [foodPlaces, selectedFoodPlace]);
 
-  const filteredResults = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
+  const visiblePlaces = useMemo(() => {
     const selectedCategoryQuery = selectedCategory === 'All' ? '' : selectedCategory.toLowerCase();
     const savedPlaceIdSet = new Set(savedPlaceIds);
 
-    return results.filter((result) => {
-      if (result.kind !== 'place') return false;
+    return foodPlaces
+      .map((place) => {
+        if (!isNearMeActive || !userLocation) return place;
 
-      const category = result.item.category.toLowerCase();
+        const distanceKm = getDistanceKm(userLocation, {
+          latitude: place.latitude,
+          longitude: place.longitude,
+        });
+
+        return { ...place, distance_meters: Math.round(distanceKm * 1000) };
+      })
+      .filter((place) => {
+      const category = place.category.toLowerCase();
       const matchesCategory = !selectedCategoryQuery || category.includes(selectedCategoryQuery);
       const matchesQuery =
         !query ||
-        [result.item.name, result.item.cuisine, result.item.suburb, result.item.category]
+        [place.name, place.cuisine, place.suburb, place.category]
         .filter(Boolean)
         .join(' ')
         .toLowerCase()
         .includes(query);
-      const matchesFilters = matchesFoodFilters(result.item, foodFilters, savedPlaceIdSet);
+      const matchesFilters = matchesFoodFilters(place, foodFilters, savedPlaceIdSet);
 
-      return matchesCategory && matchesQuery && matchesFilters;
+      if (!matchesCategory || !matchesQuery || !matchesFilters) return false;
+
+      if (hasSearchQuery) return true;
+
+      if (isNearMeActive && userLocation) {
+        return (place.distance_meters ?? Number.POSITIVE_INFINITY) <= nearMeRadiusKm * 1000;
+      }
+
+      return true;
+    })
+      .sort((left, right) =>
+        isNearMeActive
+          ? (left.distance_meters ?? Number.POSITIVE_INFINITY) -
+            (right.distance_meters ?? Number.POSITIVE_INFINITY)
+          : 0
+      );
+  }, [
+    foodFilters,
+    foodPlaces,
+    hasSearchQuery,
+    isNearMeActive,
+    nearMeRadiusKm,
+    query,
+    savedPlaceIds,
+    selectedCategory,
+    userLocation,
+  ]);
+
+  const mapFrameSections = useMemo(() => {
+    if (!isValidMapBounds(settledMapBounds) || !isValidMapCenter(settledMapCenter)) {
+      return null;
+    }
+
+    const inAreaPlaces: Place[] = [];
+    const outsideAreaPlaces: Place[] = [];
+
+    visiblePlaces.forEach((place) => {
+      if (isPlaceInsideBounds(place, settledMapBounds)) {
+        inAreaPlaces.push(place);
+        return;
+      }
+
+      outsideAreaPlaces.push(place);
     });
-  }, [foodFilters, results, savedPlaceIds, searchQuery, selectedCategory]);
+
+    const sortedOutsideAreaPlaces = isNearMeActive
+      ? outsideAreaPlaces
+      : [...outsideAreaPlaces].sort(
+          (left, right) =>
+            getDistanceKm(
+              { latitude: settledMapCenter[1], longitude: settledMapCenter[0] },
+              { latitude: left.latitude, longitude: left.longitude }
+            ) -
+            getDistanceKm(
+              { latitude: settledMapCenter[1], longitude: settledMapCenter[0] },
+              { latitude: right.latitude, longitude: right.longitude }
+            )
+        );
+
+    return {
+      inAreaPlaces,
+      outsideAreaPlaces: sortedOutsideAreaPlaces,
+    };
+  }, [isNearMeActive, settledMapBounds, settledMapCenter, visiblePlaces]);
+
+  const displayPlaces = useMemo(
+    () => mapFrameSections
+      ? [...mapFrameSections.inAreaPlaces, ...mapFrameSections.outsideAreaPlaces]
+      : visiblePlaces,
+    [mapFrameSections, visiblePlaces]
+  );
+
+  const filteredResults = useMemo<HomeResult[]>(
+    () => displayPlaces.map((item) => ({ kind: 'place', item })),
+    [displayPlaces]
+  );
+
+  const resultSections = useMemo(() => {
+    if (!mapFrameSections) return undefined;
+
+    const sections: HomeResultSection[] = [];
+
+    if (mapFrameSections.inAreaPlaces.length > 0) {
+      sections.push({
+        count: mapFrameSections.inAreaPlaces.length,
+        key: 'in-area',
+        results: mapFrameSections.inAreaPlaces.map((item) => ({ kind: 'place' as const, item })),
+        title: 'In this area',
+        variant: 'primary',
+      });
+    } else if (mapFrameSections.outsideAreaPlaces.length > 0) {
+      sections.push({
+        count: 0,
+        emptyMessage: 'No places in this map area',
+        key: 'empty-in-area',
+        results: [],
+        title: 'In this area',
+        variant: 'primary',
+      });
+    }
+
+    if (mapFrameSections.outsideAreaPlaces.length > 0) {
+      sections.push({
+        count: mapFrameSections.outsideAreaPlaces.length,
+        key: 'outside-area',
+        results: mapFrameSections.outsideAreaPlaces.map((item) => ({ kind: 'place' as const, item })),
+        subtitle: isNearMeActive ? undefined : 'Closest places from the centre of the map',
+        title: 'Nearby outside this area',
+        variant: 'outside',
+      });
+    }
+
+    return sections;
+  }, [isNearMeActive, mapFrameSections]);
 
   const handleSelectMapPlace = useCallback((placeId: string) => {
     const result = filteredResults.find(
@@ -359,6 +522,30 @@ export default function HomeScreen() {
   const activeFoodFilters = getActiveFoodFilters(foodFilters);
   const activeFilterCount = activeFoodFilters.filter((filter) => filter.id !== 'savedOnly').length;
   const hasActiveFoodFilters = activeFoodFilters.length > 0;
+  const hasListNarrowingFilters =
+    hasActiveFoodFilters || selectedCategory !== 'All';
+  const placeCount = filteredResults.length;
+  const placeNoun = placeCount === 1 ? 'place' : 'places';
+  const listCountSuffix =
+    isNearMeActive && !hasSearchQuery
+      ? `${placeNoun} within ${nearMeRadiusKm} km`
+      : hasListNarrowingFilters && !hasSearchQuery
+        ? `${placeNoun} matching your filters`
+        : foodFilters.savedOnly && !hasSearchQuery
+          ? `saved ${placeNoun}`
+          : `halal ${placeNoun}`;
+  const emptyTitle =
+    isNearMeActive && !hasSearchQuery
+      ? `No places within ${nearMeRadiusKm} km`
+      : 'No results found';
+  const emptyMessage =
+    isNearMeActive && !hasSearchQuery
+      ? 'Try increasing the radius.'
+      : searchQuery || selectedCategory !== 'All'
+        ? 'Try another restaurant, cuisine, suburb, category, or filter.'
+        : hasActiveFoodFilters
+          ? 'No restaurants match those food filters yet.'
+          : 'No halal restaurants are available yet.';
   const foodDataErrorMessage = foodErrorMessage && !hasCachedFoodData ? foodErrorMessage : null;
   const foodDataStatusMessage =
     !isNearMeActive && foodErrorMessage && hasCachedFoodData
@@ -434,21 +621,33 @@ export default function HomeScreen() {
                 accentColor={foodMode.color}
                 isExpanded={isMapExpanded}
                 nearMeActive={isNearMeActive}
+                nearMeRadiusKm={nearMeRadiusKm}
                 onMapInteraction={handleMapInteraction}
+                onReturnCameraViewRestored={() => setReturnCameraView(null)}
                 onSelectPlace={handleSelectMapPlace}
                 onToggleExpanded={handleToggleMapExpanded}
+                onViewportChange={handleViewportChange}
                 places={filteredResults}
+                returnCameraView={currentSelectedFoodPlace ? null : returnCameraView}
                 searchQuery={searchQuery}
                 selectedPlace={currentSelectedFoodPlace}
                 userLocation={userLocation}
               >
+                {isNearMeActive ? (
+                  <NearMeRadiusControl
+                    accentColor={foodMode.color}
+                    count={placeCount}
+                    onChangeRadius={setNearMeRadiusKm}
+                    radiusKm={nearMeRadiusKm}
+                  />
+                ) : null}
                 {isNearMeActive || nearMeMessage || foodDataStatusMessage ? (
                   <View style={styles.notice}>
                     <Text style={styles.noticeText}>
                       {isNearMeActive
                         ? isBrowsingNearArea
                           ? 'Browsing map near your area'
-                          : 'Halal food within 10 km'
+                          : `Halal food within ${nearMeRadiusKm} km`
                         : nearMeMessage ?? foodDataStatusMessage}
                     </Text>
                     {isNearMeActive ? (
@@ -464,22 +663,22 @@ export default function HomeScreen() {
                 ) : null}
                 <MapResults
                   accentColor={foodMode.color}
-                  emptyMessage={
-                    searchQuery || selectedCategory !== 'All'
-                      ? 'Try another restaurant, cuisine, suburb, category, or filter.'
-                      : hasActiveFoodFilters
-                        ? 'No restaurants match those food filters yet.'
-                      : 'No halal restaurants are available yet.'
-                  }
+                  contentBottomPadding={MODE_SWITCHER_HEIGHT + SHEET_MODE_SWITCHER_GAP + 18}
+                  emptyMessage={emptyMessage}
+                  emptyTitle={emptyTitle}
                   errorMessage={foodDataErrorMessage}
                   isCollapsedPreview={isMapExpanded}
                   isLoading={isFoodInitialLoading}
                   isRefreshing={isFoodRefreshing}
+                  isUpdatingArea={isUpdatingMapFrame && !isMapExpanded}
+                  listCount={placeCount}
+                  listCountSuffix={listCountSuffix}
                   onPressFoodPlace={handlePressFoodPlace}
                   onRefresh={handleRefreshFoodData}
                   onRetry={refreshFoodPlaces}
                   onToggleSavedPlace={handleToggleSavedPlace}
                   results={filteredResults}
+                  sections={resultSections}
                   savedPlaceIds={savedPlaceIds}
                   selectedPlaceId={currentSelectedFoodPlace?.id}
                 />
@@ -491,7 +690,7 @@ export default function HomeScreen() {
                     {isNearMeActive
                       ? isBrowsingNearArea
                         ? 'Browsing map near your area'
-                        : 'Halal food within 10 km'
+                        : `Halal food within ${nearMeRadiusKm} km`
                       : nearMeMessage ?? foodDataStatusMessage}
                   </Text>
                   {isNearMeActive ? (
@@ -503,6 +702,17 @@ export default function HomeScreen() {
                       <Text style={[styles.clearLabel, { color: foodMode.color }]}>Clear Near Me</Text>
                     </Pressable>
                   ) : null}
+                </View>
+              ) : null}
+
+              {isMapExpanded && isNearMeActive ? (
+                <View style={styles.fullscreenRadiusControl}>
+                  <NearMeRadiusControl
+                    accentColor={foodMode.color}
+                    count={placeCount}
+                    onChangeRadius={setNearMeRadiusKm}
+                    radiusKm={nearMeRadiusKm}
+                  />
                 </View>
               ) : null}
 
@@ -587,6 +797,22 @@ function withTimeout<T>(promise: Promise<T>): Promise<T> {
       }
     );
   });
+}
+
+function isValidMapBounds(bounds: MapBounds | null): bounds is MapBounds {
+  if (!bounds) return false;
+  if (bounds.length !== 4) return false;
+
+  const [west, south, east, north] = bounds;
+  return (
+    [west, south, east, north].every(Number.isFinite) &&
+    west < east &&
+    south < north
+  );
+}
+
+function isValidMapCenter(center: [number, number] | null): center is [number, number] {
+  return Boolean(center && center.length === 2 && center.every(Number.isFinite));
 }
 
 function matchesFoodFilters(
@@ -686,6 +912,14 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
+    zIndex: 50,
+    elevation: 50,
+  },
+  fullscreenRadiusControl: {
+    position: 'absolute',
+    top: 116,
+    left: 10,
+    right: 10,
     zIndex: 50,
     elevation: 50,
   },

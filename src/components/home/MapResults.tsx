@@ -1,21 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Animated as RNAnimated,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
+    ActivityIndicator,
+    Pressable,
+    RefreshControl,
+    Animated as RNAnimated,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
 } from 'react-native';
 
 import { BookmarkButton } from '@/components/home/BookmarkIconButton';
 import {
-  getConfidenceBadgeConfig,
-  getFoodCardBadges,
-  getTrustBadgeStyle,
-  type TrustBadge,
+    getConfidenceBadgeConfig,
+    getFoodCardBadges,
+    getTrustBadgeStyle,
+    type TrustBadge,
 } from '@/components/home/trustBadges';
 import { formatDistance } from '@/lib/distance';
 import type { CommunityEvent } from '@/services/eventsService';

@@ -6,7 +6,9 @@ import {
     Animated as RNAnimated,
     ScrollView,
     StyleSheet,
+    type StyleProp,
     Text,
+    type TextStyle,
     View,
 } from 'react-native';
 
@@ -190,7 +192,7 @@ export function MapResults({
                 <Text style={styles.sectionEmptyText}>{section.emptyMessage}</Text>
               ) : null}
               {section.results.map((result) => (
-                <View key={`${result.kind}-${result.item.id}`} style={styles.resultCardWrapper}>
+                <View key={`${result.kind}-${result.item.id}`}>
                   <ResultCard
                     accentColor={accentColor}
                     onPressFoodPlace={onPressFoodPlace}
@@ -231,10 +233,32 @@ function ListHeader({
       )}
       {isCollapsedPreview ? (
         <Text style={styles.previewHint}>Map view</Text>
-      ) : isUpdatingArea ? (
-        <Text style={styles.updatingLabel}>Updating area...</Text>
-      ) : null}
+      ) : (
+        <FadingUpdatingLabel isVisible={isUpdatingArea} />
+      )}
     </View>
+  );
+}
+
+function FadingUpdatingLabel({ isVisible }: { isVisible: boolean }) {
+  const [opacityAnim] = useState(() => new RNAnimated.Value(isVisible ? 1 : 0));
+
+  useEffect(() => {
+    const animation = RNAnimated.timing(opacityAnim, {
+      duration: isVisible ? 140 : 160,
+      toValue: isVisible ? 1 : 0,
+      useNativeDriver: true,
+    });
+
+    animation.start();
+
+    return () => animation.stop();
+  }, [isVisible, opacityAnim]);
+
+  return (
+    <RNAnimated.Text style={[styles.updatingLabel, { opacity: opacityAnim }]}>
+      Updating area...
+    </RNAnimated.Text>
   );
 }
 
@@ -251,11 +275,11 @@ function SectionHeader({
     <View style={styles.sectionHeader}>
       <View style={styles.sectionTitleRow}>
         <Text style={styles.sectionTitle}>{title}</Text>
-        <Text style={styles.sectionSeparator}>-</Text>
+        <Text style={styles.sectionSeparator}>{'\u00B7'}</Text>
         <PulsingCount count={count} />
         <Text style={styles.sectionCountSuffix}>{count === 1 ? 'place' : 'places'}</Text>
       </View>
-      {isUpdatingArea ? <Text style={styles.updatingLabel}>Updating area...</Text> : null}
+      <FadingUpdatingLabel isVisible={isUpdatingArea} />
     </View>
   );
 }
@@ -269,35 +293,66 @@ function OutsideSectionDivider({
   subtitle?: string;
   title: string;
 }) {
+  const [opacityAnim] = useState(() => new RNAnimated.Value(0));
+  const [translateYAnim] = useState(() => new RNAnimated.Value(4));
+
+  useEffect(() => {
+    RNAnimated.parallel([
+      RNAnimated.timing(opacityAnim, {
+        duration: 180,
+        toValue: 1,
+        useNativeDriver: true,
+      }),
+      RNAnimated.timing(translateYAnim, {
+        duration: 180,
+        toValue: 0,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [opacityAnim, translateYAnim]);
+
   return (
-    <View style={styles.outsideDivider}>
+    <RNAnimated.View
+      style={[
+        styles.outsideDivider,
+        { opacity: opacityAnim, transform: [{ translateY: translateYAnim }] },
+      ]}
+    >
       <View style={styles.outsideDividerHeader}>
         <View style={styles.outsideTitleRow}>
           <View style={styles.outsideDot} />
           <Text style={styles.outsideTitle}>{title}</Text>
         </View>
         <View style={styles.outsideCountRow}>
-          <PulsingCount count={count} />
+          <PulsingCount count={count} style={styles.outsideCount} />
           <Text style={styles.outsideCountSuffix}>{count === 1 ? 'place' : 'places'}</Text>
         </View>
       </View>
       {subtitle ? <Text style={styles.outsideSubtitle}>{subtitle}</Text> : null}
-    </View>
+    </RNAnimated.View>
   );
 }
 
-function PulsingCount({ count }: { count: number }) {
+function PulsingCount({ count, style }: { count: number; style?: StyleProp<TextStyle> }) {
   const [scaleAnim] = useState(() => new RNAnimated.Value(1));
+  const previousCountRef = useRef(count);
 
   useEffect(() => {
+    if (previousCountRef.current === count) {
+      return;
+    }
+
+    previousCountRef.current = count;
+    scaleAnim.setValue(1);
+
     RNAnimated.sequence([
       RNAnimated.timing(scaleAnim, {
-        duration: 90,
-        toValue: 1.08,
+        duration: 80,
+        toValue: 1.06,
         useNativeDriver: true,
       }),
       RNAnimated.timing(scaleAnim, {
-        duration: 120,
+        duration: 110,
         toValue: 1,
         useNativeDriver: true,
       }),
@@ -305,7 +360,7 @@ function PulsingCount({ count }: { count: number }) {
   }, [count, scaleAnim]);
 
   return (
-    <RNAnimated.Text style={[styles.sectionCount, { transform: [{ scale: scaleAnim }] }]}>
+    <RNAnimated.Text style={[styles.sectionCount, style, { transform: [{ scale: scaleAnim }] }]}>
       {count}
     </RNAnimated.Text>
   );
@@ -563,9 +618,6 @@ const styles = StyleSheet.create({
     marginTop: 16,
     gap: 10,
   },
-  resultCardWrapper: {
-    transform: [{ translateX: 0 }, { translateY: 0 }, { scale: 1 }],
-  },
   sectionHeader: {
     minHeight: 24,
     flexDirection: 'row',
@@ -650,6 +702,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+  },
+  outsideCount: {
+    color: '#7A3E12',
   },
   outsideCountSuffix: {
     color: '#7A3E12',
